@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chorditor Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  /* ══════════════════════════════════════════════
+     토큰 — docs/style-guide.md §1(컬러)·§5(그리드) 기준.
+     이 대시보드는 데스크탑(1600px~)/모바일(360~480px) 2단계만 대응(요청 범위 한정).
+     ══════════════════════════════════════════════ */
+  :root {
+    --bg: #FAFAF9;
+    --surface: #ffffff;
+    --border: #d9d4cc;
+    --gray-light: #ECECEA;
+    --text-primary: #242729;
+    --text-secondary: #6b6560;
+    --text-muted: #a09b95;
+    --accent: #e03c31;
+    --blue: #4f7cff;
+
+    /* 모바일(360~480px) 그리드 — style.css :root 기본값과 동일 */
+    --grid-margin: 20px;
+    --grid-gutter: 16px;
+    --grid-cols: 6;
+    --grid-container-max: 100%;
+
+    /* 카드 스타일1: 테두리없음, 그림자 y2px/blur16px 진한검정 */
+    --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+  }
+  @media (min-width: 1600px) {
+    :root {
+      /* 데스크탑(1600px~) 그리드 — style.css 1080px 티어(마진32/거터24/12컬럼) +
+         1600px 티어(컨테이너캡 1264px) 값 그대로 */
+      --grid-margin: 32px;
+      --grid-gutter: 24px;
+      --grid-cols: 12;
+      --grid-container-max: min(100%, 1264px);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .db-wrap {
+    max-width: var(--grid-container-max);
+    margin-inline: auto;
+    padding: var(--grid-margin);
+  }
+
+  .db-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    margin-bottom: 24px;
+  }
+  .db-title { font-size: 20px; font-weight: 700; margin: 0; }
+  .db-updated { font-size: 13px; color: var(--text-muted); }
+
+  .db-tabs { display: flex; gap: 16px; margin-bottom: 24px; }
+  .db-tabs a {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding-bottom: 6px;
+    border-bottom: 2px solid transparent;
+  }
+  .db-tabs a.active { color: var(--text-primary); font-weight: 700; border-bottom-color: var(--text-primary); }
+
+  /* 그리드 — 브레이크포인트별 --grid-cols 그대로 씀 */
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--grid-cols), 1fr);
+    gap: var(--grid-gutter);
+  }
+
+  .db-card {
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 16px;
+    padding: 20px;
+    min-height: 96px;
+  }
+  .db-card-label { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; text-align: left; }
+  .db-card-value {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+    text-align: left;
+    display: inline-flex;
+  }
+  .db-digit-slot {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    height: 1.2em;
+    line-height: 1.2em;
+  }
+  .db-value-slide {
+    position: absolute;
+    left: 0;
+    right: 0;
+    transition: transform 0.4s ease, opacity 0.4s ease;
+  }
+  .db-card-delta { font-size: 13px; margin: 4px 0 0; text-align: left; }
+  .db-card-delta--up   { color: #2E9E72; } /* --icon-green */
+  .db-card-delta--down { color: var(--accent); }
+
+  /* 통계카드: 4개 지표를 카드 하나로 묶음, 전체폭 */
+  .db-card--stat {
+    grid-column: span var(--grid-cols);
+    min-height: 0;
+  }
+  .db-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 모바일 2열 */
+    gap: 20px;
+  }
+  .db-stat-item { padding-right: 20px; }
+
+  @media (min-width: 1600px) {
+    .db-stat-grid { grid-template-columns: repeat(4, 1fr); } /* 데스크탑 4열 */
+  }
+
+  .db-chart-box {
+    grid-column: span var(--grid-cols); /* 모바일: 전체폭(6/6) */
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  /* 데스크탑: 차트 2개를 12컬럼에 6칸씩(2열) */
+  @media (min-width: 1600px) {
+    .db-chart-box { grid-column: span 6; }
+  }
+
+  .db-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .db-chart-title { font-size: 16px; font-weight: 700; margin: 0; }
+  .db-chart-select {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--gray-light);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+  }
+
+  .db-chart-body {
+    aspect-ratio: 1.618 / 1; /* 골든비율 — 차트 영역 자체에만 적용 */
+    position: relative;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .db-chart-body canvas { width: 100% !important; height: 100% !important; }
+
+  .db-chart-legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    flex-shrink: 0;
+    padding-top: 12px;
+    position: relative;
+  }
+  .db-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .db-legend-item { display: flex; align-items: center; gap: 6px; }
+  .db-legend-item--off { color: var(--text-muted); }
+  .db-legend-dot { width: 8px; height: 8px; flex-shrink: 0; }
+
+  .db-legend-toggle-btn {
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--gray-light);
+    border: none;
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+  }
+
+  .db-legend-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 12px;
+    padding: 10px;
+    z-index: 10;
+    min-width: 140px;
+  }
+  .db-legend-menu.open { display: block; }
+  .db-legend-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 6px 4px;
+    cursor: pointer;
+  }
+
+  /* 그리드 오버레이 — G키로 토글, 컬럼 정렬 디버그용 */
+  .grid-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    max-width: var(--grid-container-max);
+    margin-inline: auto;
+    padding-inline: var(--grid-margin);
+    grid-template-columns: repeat(var(--grid-cols), 1fr);
+    gap: var(--grid-gutter);
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .grid-overlay.active { display: grid; }
+  .grid-overlay > div {
+    height: 100%;
+    background: rgba(79, 124, 255, 0.12);
+    outline: 1px solid rgba(79, 124, 255, 0.4);
+  }
+</style>
+</head>
+<body>
+
+<div class="db-wrap">
+  <div class="db-header">
+    <h1 class="db-title">코디터 대시보드</h1>
+    <span class="db-updated" id="db-updated">마지막 갱신: --</span>
+  </div>
+
+  <nav class="db-tabs">
+    <a href="dashboard.html" class="active">대시보드</a>
+    <a href="analytics-projects.html">분석 프로젝트</a>
+  </nav>
+
+  <div class="db-grid">
+    <div class="db-card db-card--stat">
+      <div class="db-stat-grid">
+        <div class="db-stat-item">
+          <p class="db-card-label">DAU (지난 24시간)</p>
+          <p class="db-card-value" id="stat-dau">--</p>
+          <p class="db-card-delta" id="delta-dau">--</p>
+        </div>
+        <div class="db-stat-item">
+          <p class="db-card-label">WAU (지난 7일)</p>
+          <p class="db-card-value" id="stat-wau">--</p>
+          <p class="db-card-delta" id="delta-wau">--</p>
+        </div>
+        <div class="db-stat-item">
+          <p class="db-card-label">MAU (지난 30일)</p>
+          <p class="db-card-value" id="stat-mau">--</p>
+          <p class="db-card-delta" id="delta-mau">--</p>
+        </div>
+        <div class="db-stat-item">
+          <p class="db-card-label">신규가입 (오늘)</p>
+          <p class="db-card-value" id="stat-signups">--</p>
+          <p class="db-card-delta" id="delta-signups">--</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="db-chart-box" id="chart-trend">
+      <div class="db-chart-header">
+        <h2 class="db-chart-title">활성 유저 수</h2>
+        <select class="db-chart-select" id="range-active">
+          <option value="all">전체</option>
+          <option value="7">7일</option>
+          <option value="30">30일</option>
+          <option value="180">6개월</option>
+        </select>
+      </div>
+      <div class="db-chart-body"><canvas id="canvas-active"></canvas></div>
+      <div class="db-chart-legend-row">
+        <div class="db-chart-legend" id="legend-active"></div>
+        <button class="db-legend-toggle-btn" data-menu-target="menu-active">지표 선택</button>
+        <div class="db-legend-menu" id="menu-active">
+          <label><input type="checkbox" value="dau" checked>DAU</label>
+          <label><input type="checkbox" value="wau" checked>WAU</label>
+          <label><input type="checkbox" value="mau" checked>MAU</label>
+          <label><input type="checkbox" value="dau_wau">DAU/WAU</label>
+          <label><input type="checkbox" value="dau_mau">DAU/MAU</label>
+          <label><input type="checkbox" value="wau_mau">WAU/MAU</label>
+        </div>
+      </div>
+    </div>
+    <div class="db-chart-box" id="chart-secondary">
+      <div class="db-chart-header">
+        <h2 class="db-chart-title">신규 유저 수</h2>
+        <select class="db-chart-select" id="range-signups">
+          <option value="all">전체</option>
+          <option value="7">7일</option>
+          <option value="30">30일</option>
+          <option value="180">6개월</option>
+        </select>
+      </div>
+      <div class="db-chart-body"><canvas id="canvas-signups"></canvas></div>
+      <div class="db-chart-legend-row">
+        <div class="db-chart-legend" id="legend-signups"></div>
+        <button class="db-legend-toggle-btn" data-menu-target="menu-signups">지표 선택</button>
+        <div class="db-legend-menu" id="menu-signups">
+          <label><input type="checkbox" value="signups" checked>신규가입</label>
+          <label><input type="checkbox" value="cumulative" checked>누적가입</label>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-overlay" id="grid-overlay"></div>
+
+<script>
+  // G키로 그리드 오버레이 토글 — --grid-cols 값 읽어서 그만큼 컬럼 div 생성
+  const overlay = document.getElementById('grid-overlay');
+
+  function rebuildOverlay() {
+    const cols = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grid-cols'), 10) || 6;
+    overlay.innerHTML = '';
+    for (let i = 0; i < cols; i++) {
+      overlay.appendChild(document.createElement('div'));
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'g' && e.key !== 'G') return;
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    rebuildOverlay();
+    overlay.classList.toggle('active');
+  });
+
+  window.addEventListener('resize', () => {
+    if (overlay.classList.contains('active')) rebuildOverlay();
+  });
+
+  // 범주 선택 체크리스트 팝오버 토글
+  document.querySelectorAll('.db-legend-toggle-btn').forEach((btn) => {
+    const menu = document.getElementById(btn.dataset.menuTarget);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('open');
+    });
+  });
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.db-legend-menu.open').forEach((menu) => {
+      if (!menu.contains(e.target)) menu.classList.remove('open');
+    });
+  });
+
+  // ── DB 연동: dau_wau_mau_history 최신 2일치(오늘/어제) 불러와서 통계카드 채움 ──
+  const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
+
+  function formatDelta(today, prev) {
+    if (prev == null || today == null) return { text: '--', dir: null };
+    const diff = today - prev;
+    const pct = prev === 0 ? (diff === 0 ? 0 : 100) : (diff / prev) * 100;
+    const sign = diff > 0 ? '+' : diff < 0 ? '' : '±';
+    const dir = diff > 0 ? 'up' : diff < 0 ? 'down' : null;
+    return { text: `${sign}${diff}명 (${sign}${pct.toFixed(1)}%)`, dir };
+  }
+
+  // 값 바뀔 때 아래→위로 슬라이드 애니메이션(오도미터 스타일)
+  function animateValue(el, text) {
+    const isFirstLoad = el.dataset.value === undefined;
+    const oldText = el.dataset.value;
+    el.dataset.value = text;
+    if (isFirstLoad) { el.textContent = text; return; }
+    if (oldText === text) return; // 값 그대로면 롤링 생략
+
+    const len = Math.max(oldText.length, text.length);
+    const oldPadded = oldText.padStart(len, ' ');
+    const newPadded = text.padStart(len, ' ');
+
+    el.innerHTML = '';
+    for (let i = 0; i < len; i++) {
+      const oldCh = oldPadded[i];
+      const newCh = newPadded[i];
+      const slot = document.createElement('span');
+      slot.className = 'db-digit-slot';
+
+      if (oldCh === newCh) {
+        slot.textContent = newCh;
+        el.appendChild(slot);
+        continue;
+      }
+
+      const oldSpan = document.createElement('span');
+      oldSpan.className = 'db-value-slide';
+      oldSpan.textContent = oldCh;
+      const newSpan = document.createElement('span');
+      newSpan.className = 'db-value-slide';
+      newSpan.textContent = newCh;
+      newSpan.style.transform = 'translateY(100%)';
+      newSpan.style.opacity = '0';
+
+      slot.appendChild(oldSpan);
+      slot.appendChild(newSpan);
+      el.appendChild(slot);
+
+      requestAnimationFrame(() => {
+        oldSpan.style.transform = 'translateY(-100%)';
+        oldSpan.style.opacity = '0';
+        newSpan.style.transform = 'translateY(0)';
+        newSpan.style.opacity = '1';
+      });
+    }
+
+    setTimeout(() => { el.textContent = text; }, 450); // 트랜지션 끝나면 순수 텍스트로 정리
+  }
+
+  function setStat(key, value, delta) {
+    const valEl = document.getElementById(`stat-${key}`);
+    const deltaEl = document.getElementById(`delta-${key}`);
+    animateValue(valEl, value == null ? '--' : value.toLocaleString());
+    deltaEl.textContent = delta.text;
+    deltaEl.classList.remove('db-card-delta--up', 'db-card-delta--down');
+    if (delta.dir === 'up') deltaEl.classList.add('db-card-delta--up');
+    if (delta.dir === 'down') deltaEl.classList.add('db-card-delta--down');
+  }
+
+  let historyRows = []; // day 오름차순 전체 히스토리 (fetch 1번으로 통계카드+차트 둘 다 처리)
+
+  function applyStats() {
+    const today = historyRows[historyRows.length - 1] || {};
+    const prev = historyRows[historyRows.length - 2] || {};
+
+    setStat('dau', today.dau, formatDelta(today.dau, prev.dau));
+    setStat('wau', today.wau, formatDelta(today.wau, prev.wau));
+    setStat('mau', today.mau, formatDelta(today.mau, prev.mau));
+    setStat('signups', today.signups, formatDelta(today.signups, prev.signups));
+
+    if (today.updated_at) {
+      const t = new Date(today.updated_at);
+      const yyyy = t.getFullYear();
+      const mo = String(t.getMonth() + 1).padStart(2, '0');
+      const dd = String(t.getDate()).padStart(2, '0');
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mi = String(t.getMinutes()).padStart(2, '0');
+      document.getElementById('db-updated').textContent = `마지막 갱신: ${yyyy}-${mo}-${dd} ${hh}:${mi}`;
+    }
+  }
+
+  function rowsInRange(rangeVal) {
+    if (rangeVal === 'all') return historyRows;
+    const n = parseInt(rangeVal, 10);
+    return historyRows.slice(-n);
+  }
+
+  const SERIES_META = {
+    dau:     { label: 'DAU',     color: '#4f7cff', axis: 'count' },
+    wau:     { label: 'WAU',     color: '#2E9E72', axis: 'count' },
+    mau:     { label: 'MAU',     color: '#7B52CC', axis: 'count' },
+    dau_wau: { label: 'DAU/WAU', color: '#E8C000', axis: 'pct' },
+    dau_mau: { label: 'DAU/MAU', color: '#C94B7A', axis: 'pct' },
+    wau_mau: { label: 'WAU/MAU', color: '#E0332A', axis: 'pct' },
+  };
+
+  function seriesValue(row, key) {
+    // 스티키니스류는 %로 변환(우측 y축 표기 단위와 맞춤)
+    if (key === 'dau_wau') return row.wau ? (row.dau / row.wau) * 100 : null;
+    if (key === 'dau_mau') return row.mau ? (row.dau / row.mau) * 100 : null;
+    if (key === 'wau_mau') return row.mau ? (row.wau / row.mau) * 100 : null;
+    return row[key];
+  }
+
+  // 세로 크로스헤어 — 호버 시 tooltip이 활성화된 x 위치에 점선을 그림
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+      const active = chart.tooltip && chart.tooltip._active;
+      if (active && active.length) {
+        const x = active[0].element.x;
+        const { top, bottom } = chart.chartArea;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(36, 39, 41, 0.25)';
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+    },
+  };
+  Chart.register(crosshairPlugin);
+
+  function renderActiveLegend() {
+    const checked = new Set(Array.from(document.querySelectorAll('#menu-active input:checked')).map((el) => el.value));
+    const legend = document.getElementById('legend-active');
+    legend.innerHTML = Object.entries(SERIES_META).map(([key, meta]) => {
+      const on = checked.has(key);
+      const dotColor = on ? meta.color : 'var(--border)';
+      return `<span class="db-legend-item${on ? '' : ' db-legend-item--off'}">` +
+        `<span class="db-legend-dot" style="background:${dotColor};"></span>${meta.label}</span>`;
+    }).join('');
+  }
+
+  let chartActive, chartSignups;
+
+  function buildActiveChart() {
+    renderActiveLegend();
+    const rangeVal = document.getElementById('range-active').value;
+    const rows = rowsInRange(rangeVal);
+    const checked = Array.from(document.querySelectorAll('#menu-active input:checked')).map((el) => el.value);
+
+    const datasets = checked.map((key) => ({
+      label: SERIES_META[key].label,
+      data: rows.map((r) => seriesValue(r, key)),
+      borderColor: SERIES_META[key].color,
+      backgroundColor: SERIES_META[key].color,
+      yAxisID: SERIES_META[key].axis === 'pct' ? 'yPct' : 'yCount',
+      tension: 0.25,
+      pointRadius: 0,
+      borderWidth: 2,
+    }));
+
+    const hasCount = checked.some((k) => SERIES_META[k].axis === 'count');
+    const hasPct = checked.some((k) => SERIES_META[k].axis === 'pct');
+
+    const ctx = document.getElementById('canvas-active');
+    if (chartActive) chartActive.destroy();
+    chartActive = new Chart(ctx, {
+      type: 'line',
+      data: { labels: rows.map((r) => r.day), datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(item) {
+                const v = item.parsed.y;
+                if (item.dataset.yAxisID === 'yPct') return `${item.dataset.label}: ${v.toFixed(1)}%`;
+                return `${item.dataset.label}: ${v.toLocaleString()}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8 } },
+          yCount: {
+            display: hasCount,
+            position: 'left',
+            title: { display: hasCount, text: '명' },
+          },
+          yPct: {
+            display: hasPct,
+            position: hasCount ? 'right' : 'left', // count축 없이 %류만 단독 선택되면 좌측으로
+            grid: { drawOnChartArea: !hasCount }, // 단독일 땐 그리드 그려도 안 겹침
+            ticks: { callback: (v) => v + '%' },
+            title: { display: hasPct, text: '%' },
+          },
+        },
+      },
+    });
+  }
+
+  const SERIES_META_SIGNUPS = {
+    signups:    { label: '신규가입', color: '#4f7cff', field: 'signups',           axis: 'yDaily' },
+    cumulative: { label: '누적가입', color: '#7B52CC', field: 'cumulativeSignups', axis: 'yCumulative' },
+  };
+
+  function renderSignupsLegend() {
+    const checked = new Set(Array.from(document.querySelectorAll('#menu-signups input:checked')).map((el) => el.value));
+    const legend = document.getElementById('legend-signups');
+    legend.innerHTML = Object.entries(SERIES_META_SIGNUPS).map(([key, meta]) => {
+      const on = checked.has(key);
+      const dotColor = on ? meta.color : 'var(--border)';
+      return `<span class="db-legend-item${on ? '' : ' db-legend-item--off'}">` +
+        `<span class="db-legend-dot" style="background:${dotColor};"></span>${meta.label}</span>`;
+    }).join('');
+  }
+
+  function buildSignupsChart() {
+    renderSignupsLegend();
+    const rangeVal = document.getElementById('range-signups').value;
+    const rows = rowsInRange(rangeVal);
+    const checked = Array.from(document.querySelectorAll('#menu-signups input:checked')).map((el) => el.value);
+
+    const datasets = checked.map((key) => {
+      const meta = SERIES_META_SIGNUPS[key];
+      return {
+        label: meta.label,
+        data: rows.map((r) => r[meta.field]),
+        borderColor: meta.color,
+        backgroundColor: meta.color,
+        yAxisID: meta.axis,
+        tension: 0.25,
+        pointRadius: 0,
+        borderWidth: 2,
+      };
+    });
+
+    const hasDaily = checked.includes('signups');
+    const hasCumulative = checked.includes('cumulative');
+
+    const ctx = document.getElementById('canvas-signups');
+    if (chartSignups) chartSignups.destroy();
+    chartSignups = new Chart(ctx, {
+      type: 'line',
+      data: { labels: rows.map((r) => r.day), datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(item) { return `${item.dataset.label}: ${item.parsed.y.toLocaleString()}명`; },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8 } },
+          yDaily: {
+            display: hasDaily,
+            position: 'left',
+            title: { display: hasDaily, text: '일별 신규가입(명)' },
+          },
+          yCumulative: {
+            display: hasCumulative,
+            position: hasDaily ? 'right' : 'left', // 단독 선택 시 좌측으로
+            grid: { drawOnChartArea: !hasDaily },
+            title: { display: hasCumulative, text: '누적가입(명)' },
+          },
+        },
+      },
+    });
+  }
+
+  document.querySelectorAll('#menu-signups input[type=checkbox]').forEach((cb) => {
+    cb.addEventListener('change', buildSignupsChart);
+  });
+
+  document.getElementById('range-active').addEventListener('change', buildActiveChart);
+  document.getElementById('range-signups').addEventListener('change', buildSignupsChart);
+  document.querySelectorAll('#menu-active input[type=checkbox]').forEach((cb) => {
+    cb.addEventListener('change', buildActiveChart);
+  });
+
+  async function loadDashboard() {
+    const url = `${SUPABASE_URL}/rest/v1/dau_wau_mau_history?select=*&order=day.asc`;
+    const resp = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    });
+    if (!resp.ok) {
+      document.getElementById('db-updated').textContent = '마지막 갱신: 실패';
+      return;
+    }
+    historyRows = await resp.json();
+    // 누적가입수 — 전체 히스토리 기준 러닝합(range 필터랑 무관하게 항상 데이터 시작일부터 누적)
+    let cumulative = 0;
+    historyRows.forEach((r) => {
+      cumulative += r.signups || 0;
+      r.cumulativeSignups = cumulative;
+    });
+    applyStats();
+    buildActiveChart();
+    buildSignupsChart();
+  }
+
+  loadDashboard();
+  setInterval(loadDashboard, 60 * 1000); // 1분마다 재요청 — DB cron(5분)이랑 페이지 폴링 주기가 안 맞물려 생기는 오프셋을 줄임
+</script>
+
+</body>
+</html>

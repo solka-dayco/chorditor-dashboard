@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chorditor Projects</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  /* ══════════════════════════════════════════════
+     토큰 — dashboard.html이랑 동일(docs/style-guide.md §1·§5 기준).
+     데스크탑(1600px~)/모바일(360~480px) 2단계만 대응.
+     ══════════════════════════════════════════════ */
+  :root {
+    --bg: #FAFAF9;
+    --surface: #ffffff;
+    --border: #d9d4cc;
+    --gray-light: #ECECEA;
+    --text-primary: #242729;
+    --text-secondary: #6b6560;
+    --text-muted: #a09b95;
+    --accent: #e03c31;
+    --blue: #4f7cff;
+
+    --grid-margin: 20px;
+    --grid-gutter: 16px;
+    --grid-cols: 6;
+    --grid-container-max: 100%;
+
+    --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+  }
+  @media (min-width: 1600px) {
+    :root {
+      --grid-margin: 32px;
+      --grid-gutter: 24px;
+      --grid-cols: 12;
+      --grid-container-max: min(100%, 1264px);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .db-wrap {
+    max-width: var(--grid-container-max);
+    margin-inline: auto;
+    padding: var(--grid-margin);
+  }
+
+  .db-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .db-title { font-size: 20px; font-weight: 700; margin: 0; }
+  .db-updated { font-size: 13px; color: var(--text-muted); }
+
+  .db-tabs { display: flex; gap: 16px; margin-bottom: 24px; }
+  .db-tabs a {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding-bottom: 6px;
+    border-bottom: 2px solid transparent;
+  }
+  .db-tabs a.active { color: var(--text-primary); font-weight: 700; border-bottom-color: var(--text-primary); }
+
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--grid-cols), 1fr);
+    gap: var(--grid-gutter);
+  }
+
+  .fn-project-create {
+    grid-column: span var(--grid-cols);
+    display: flex;
+    gap: 10px;
+  }
+  .fn-project-input {
+    flex: 1;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+  }
+  .fn-project-add-btn {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--text-primary);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 20px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .fn-project-list {
+    grid-column: span var(--grid-cols);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .fn-project-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 999px;
+    padding: 8px 8px 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .fn-project-chip.active { background: var(--text-primary); color: var(--bg); }
+  .fn-project-chip-del {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--gray-light);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .fn-project-chip.active .fn-project-chip-del { background: rgba(255,255,255,0.15); color: var(--bg); }
+  .fn-empty-hint { grid-column: span var(--grid-cols); color: var(--text-muted); font-size: 14px; }
+
+  .fn-content {
+    grid-column: span var(--grid-cols);
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 16px;
+    padding: 20px;
+    display: none;
+  }
+  .fn-content.active { display: block; }
+  .fn-content-title { font-size: 16px; font-weight: 700; margin: 0 0 16px; }
+  .fn-content-body {
+    aspect-ratio: 1.618 / 1; /* 골든비율 — 차트 영역 자체에만 적용 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  .db-card {
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 16px;
+    padding: 20px;
+    grid-column: span var(--grid-cols);
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  /* 그리드 오버레이 — G키로 토글, 컬럼 정렬 디버그용 */
+  .grid-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    max-width: var(--grid-container-max);
+    margin-inline: auto;
+    padding-inline: var(--grid-margin);
+    grid-template-columns: repeat(var(--grid-cols), 1fr);
+    gap: var(--grid-gutter);
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .grid-overlay.active { display: grid; }
+  .grid-overlay > div {
+    height: 100%;
+    background: rgba(79, 124, 255, 0.12);
+    outline: 1px solid rgba(79, 124, 255, 0.4);
+  }
+</style>
+</head>
+<body>
+
+<div class="db-wrap">
+  <div class="db-header">
+    <h1 class="db-title">분석 프로젝트</h1>
+    <span class="db-updated" id="db-updated">마지막 갱신: --</span>
+  </div>
+
+  <nav class="db-tabs">
+    <a href="dashboard.html">대시보드</a>
+    <a href="analytics-projects.html" class="active">분석 프로젝트</a>
+  </nav>
+
+  <div class="db-grid">
+    <div class="fn-project-create">
+      <input type="text" class="fn-project-input" id="fn-project-input" placeholder="새 프로젝트 이름 (예: 데일리미션 퍼널)" />
+      <button class="fn-project-add-btn" id="fn-project-add-btn">+ 추가</button>
+    </div>
+    <div class="fn-project-list" id="fn-project-list"></div>
+    <p class="fn-empty-hint" id="fn-empty-hint">아직 만든 프로젝트가 없음 — 위에서 이름 입력하고 추가해줘.</p>
+    <div class="fn-content" id="fn-content">
+      <h2 class="fn-content-title" id="fn-content-title"></h2>
+      <div class="fn-content-body">차트/테이블 자리 (자리만 잡음)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 프로젝트 타이틀 생성/목록 — localStorage에 저장(이 브라우저 전용)
+  const FN_STORAGE_KEY = 'chorditor_funnel_projects';
+
+  function fnLoadProjects() {
+    try { return JSON.parse(localStorage.getItem(FN_STORAGE_KEY)) || []; }
+    catch (_) { return []; }
+  }
+  function fnSaveProjects(list) {
+    try { localStorage.setItem(FN_STORAGE_KEY, JSON.stringify(list)); } catch (_) {}
+  }
+
+  let fnProjects = fnLoadProjects();
+  let fnActiveId = fnProjects[0]?.id ?? null;
+
+  function fnRenderProjects() {
+    const listEl = document.getElementById('fn-project-list');
+    const hintEl = document.getElementById('fn-empty-hint');
+    const contentEl = document.getElementById('fn-content');
+    hintEl.style.display = fnProjects.length ? 'none' : 'block';
+
+    listEl.innerHTML = fnProjects.map((p) => `
+      <span class="fn-project-chip${p.id === fnActiveId ? ' active' : ''}" data-id="${p.id}">
+        ${p.title}
+        <span class="fn-project-chip-del" data-del="${p.id}">×</span>
+      </span>
+    `).join('');
+
+    const active = fnProjects.find((p) => p.id === fnActiveId);
+    contentEl.classList.toggle('active', !!active);
+    if (active) document.getElementById('fn-content-title').textContent = active.title;
+  }
+
+  function fnAddProject() {
+    const input = document.getElementById('fn-project-input');
+    const title = input.value.trim();
+    if (!title) return;
+    const project = { id: Date.now().toString(36), title };
+    fnProjects.push(project);
+    fnActiveId = project.id;
+    fnSaveProjects(fnProjects);
+    fnRenderProjects();
+    input.value = '';
+  }
+
+  document.getElementById('fn-project-add-btn').addEventListener('click', fnAddProject);
+  document.getElementById('fn-project-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fnAddProject();
+  });
+
+  document.getElementById('fn-project-list').addEventListener('click', (e) => {
+    const delId = e.target.dataset.del;
+    if (delId) {
+      fnProjects = fnProjects.filter((p) => p.id !== delId);
+      if (fnActiveId === delId) fnActiveId = fnProjects[0]?.id ?? null;
+      fnSaveProjects(fnProjects);
+      fnRenderProjects();
+      return;
+    }
+    const chip = e.target.closest('.fn-project-chip');
+    if (chip) {
+      fnActiveId = chip.dataset.id;
+      fnRenderProjects();
+    }
+  });
+
+  fnRenderProjects();
+</script>
+
+<div class="grid-overlay" id="grid-overlay"></div>
+
+<script>
+  // G키로 그리드 오버레이 토글 — --grid-cols 값 읽어서 그만큼 컬럼 div 생성
+  const overlay = document.getElementById('grid-overlay');
+
+  function rebuildOverlay() {
+    const cols = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grid-cols'), 10) || 6;
+    overlay.innerHTML = '';
+    for (let i = 0; i < cols; i++) {
+      overlay.appendChild(document.createElement('div'));
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'g' && e.key !== 'G') return;
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    rebuildOverlay();
+    overlay.classList.toggle('active');
+  });
+
+  window.addEventListener('resize', () => {
+    if (overlay.classList.contains('active')) rebuildOverlay();
+  });
+</script>
+
+</body>
+</html>
