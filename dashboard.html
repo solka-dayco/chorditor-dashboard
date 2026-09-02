@@ -265,11 +265,6 @@
     display: flex; flex-direction: column; gap: 16px;
   }
   .db-gate-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0; }
-  .db-gate-card input {
-    font-family: inherit; font-size: 16px;
-    padding: 12px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--bg); color: var(--text-primary);
-  }
   .db-gate-card button {
     font-family: inherit; font-size: 16px; font-weight: 600;
     padding: 12px; border: 0; border-radius: 8px;
@@ -286,13 +281,11 @@
 <body>
 
 <div id="db-gate">
-  <form class="db-gate-card" id="db-gate-form">
+  <div class="db-gate-card">
     <h1 class="db-gate-title">관리자 로그인</h1>
-    <input type="email" id="db-email" placeholder="이메일" autocomplete="username" required />
-    <input type="password" id="db-pw" placeholder="비밀번호" autocomplete="current-password" required />
-    <button type="submit" id="db-login-btn">로그인</button>
+    <button type="button" id="db-login-btn">Google로 로그인</button>
     <p class="db-gate-err" id="db-gate-err"></p>
-  </form>
+  </div>
 </div>
 
 <div class="db-wrap">
@@ -736,7 +729,12 @@
         'Authorization': `Bearer ${session.access_token}`,
       },
     });
-    if (resp.status === 401 || resp.status === 403) { showGate(); return; }
+    // 세션은 있는데 RLS가 막은 경우 = 관리자 계정이 아님. 세션을 끊어야 다른 계정으로 다시 시도할 수 있다.
+    if (resp.status === 401 || resp.status === 403) {
+      await sbAuth.auth.signOut();
+      showGate('이 계정에는 조회 권한이 없습니다.');
+      return;
+    }
     if (!resp.ok) {
       document.getElementById('db-updated').textContent = '마지막 갱신: 실패';
       return;
@@ -759,8 +757,10 @@
   const loginBtn = document.getElementById('db-login-btn');
   let pollTimer = null;
 
-  function showGate() {
+  function showGate(msg) {
     gateEl.hidden = false;
+    loginBtn.disabled = false;
+    gateErr.textContent = msg || '';
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
@@ -773,18 +773,21 @@
     }
   }
 
-  document.getElementById('db-gate-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  loginBtn.addEventListener('click', async () => {
     gateErr.textContent = '';
     loginBtn.disabled = true;
-    const { error } = await sbAuth.auth.signInWithPassword({
-      email: document.getElementById('db-email').value.trim(),
-      password: document.getElementById('db-pw').value,
+    // 구글 인증 후 이 페이지로 되돌아온다. 쿼리·해시를 뗀 주소를 넘겨야
+    // Supabase Redirect URLs 등록값과 정확히 일치한다.
+    const { error } = await sbAuth.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
     });
-    loginBtn.disabled = false;
-    if (error) { gateErr.textContent = '로그인 실패: ' + error.message; return; }
-    document.getElementById('db-pw').value = '';
-    startDashboard();
+    if (error) {
+      loginBtn.disabled = false;
+      gateErr.textContent = '로그인 실패: ' + error.message;
+    }
+    // 성공하면 구글로 페이지가 이동하므로 여기서 더 할 일은 없다.
+    // 돌아왔을 때의 세션 복원은 아래 getSession() 부트스트랩이 처리한다.
   });
 
   document.getElementById('db-signout').addEventListener('click', async () => {
