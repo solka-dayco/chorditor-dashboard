@@ -6,6 +6,7 @@
 <title>Chorditor Dashboard</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   /* ══════════════════════════════════════════════
      토큰 — docs/style-guide.md §1(컬러)·§5(그리드) 기준.
@@ -246,13 +247,59 @@
     outline: 1px solid rgba(79, 124, 255, 0.4);
   }
 </style>
+<style>
+  /* ── 관리자 로그인 게이트 ── */
+  #db-gate {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #db-gate[hidden] { display: none !important; }
+  .db-gate-card {
+    width: 100%; max-width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .db-gate-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0; }
+  .db-gate-card input {
+    font-family: inherit; font-size: 16px;
+    padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text-primary);
+  }
+  .db-gate-card button {
+    font-family: inherit; font-size: 16px; font-weight: 600;
+    padding: 12px; border: 0; border-radius: 8px;
+    background: var(--text-primary); color: var(--bg); cursor: pointer;
+  }
+  .db-gate-card button:disabled { opacity: .5; cursor: default; }
+  .db-gate-err { font-size: 13px; color: #e03c31; min-height: 18px; margin: 0; }
+  #db-signout {
+    font-family: inherit; font-size: 13px; color: var(--text-secondary);
+    background: none; border: 0; cursor: pointer; text-decoration: underline;
+  }
+</style>
 </head>
 <body>
+
+<div id="db-gate">
+  <form class="db-gate-card" id="db-gate-form">
+    <h1 class="db-gate-title">관리자 로그인</h1>
+    <input type="email" id="db-email" placeholder="이메일" autocomplete="username" required />
+    <input type="password" id="db-pw" placeholder="비밀번호" autocomplete="current-password" required />
+    <button type="submit" id="db-login-btn">로그인</button>
+    <p class="db-gate-err" id="db-gate-err"></p>
+  </form>
+</div>
 
 <div class="db-wrap">
   <div class="db-header">
     <h1 class="db-title">코디터 대시보드</h1>
     <span class="db-updated" id="db-updated">마지막 갱신: --</span>
+    <button type="button" id="db-signout">로그아웃</button>
   </div>
 
   <nav class="db-tabs">
@@ -376,6 +423,11 @@
   // ── DB 연동: dau_wau_mau_history 최신 2일치(오늘/어제) 불러와서 통계카드 채움 ──
   const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
+
+  // anon 키는 PostgREST의 apikey 헤더용으로만 남긴다(공개돼도 무방한 값).
+  // 실제 데이터 접근 권한은 로그인 세션의 access_token이 결정하고, RLS가 관리자 uid만 통과시킨다.
+  // supabase-js는 인증(세션 발급·자동 갱신)에만 쓰고, 조회는 기존대로 raw fetch를 유지한다.
+  const sbAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   function formatDelta(today, prev) {
     if (prev == null || today == null) return { text: '--', dir: null };
@@ -673,13 +725,18 @@
   });
 
   async function loadDashboard() {
+    // getSession()이 만료 임박 토큰을 알아서 갱신해준다 — 1분 폴링이 조용히 401로 죽는 걸 막음
+    const { data: { session } } = await sbAuth.auth.getSession();
+    if (!session) { showGate(); return; }
+
     const url = `${SUPABASE_URL}/rest/v1/dau_wau_mau_history?select=*&order=day.asc`;
     const resp = await fetch(url, {
       headers: {
         'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${session.access_token}`,
       },
     });
+    if (resp.status === 401 || resp.status === 403) { showGate(); return; }
     if (!resp.ok) {
       document.getElementById('db-updated').textContent = '마지막 갱신: 실패';
       return;
@@ -696,8 +753,48 @@
     buildSignupsChart();
   }
 
-  loadDashboard();
-  setInterval(loadDashboard, 60 * 1000); // 1분마다 재요청 — DB cron(5분)이랑 페이지 폴링 주기가 안 맞물려 생기는 오프셋을 줄임
+  // ── 로그인 게이트 ──
+  const gateEl = document.getElementById('db-gate');
+  const gateErr = document.getElementById('db-gate-err');
+  const loginBtn = document.getElementById('db-login-btn');
+  let pollTimer = null;
+
+  function showGate() {
+    gateEl.hidden = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function startDashboard() {
+    gateEl.hidden = true;
+    loadDashboard();
+    if (!pollTimer) {
+      // 1분마다 재요청 — DB cron(5분)이랑 페이지 폴링 주기가 안 맞물려 생기는 오프셋을 줄임
+      pollTimer = setInterval(loadDashboard, 60 * 1000);
+    }
+  }
+
+  document.getElementById('db-gate-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    gateErr.textContent = '';
+    loginBtn.disabled = true;
+    const { error } = await sbAuth.auth.signInWithPassword({
+      email: document.getElementById('db-email').value.trim(),
+      password: document.getElementById('db-pw').value,
+    });
+    loginBtn.disabled = false;
+    if (error) { gateErr.textContent = '로그인 실패: ' + error.message; return; }
+    document.getElementById('db-pw').value = '';
+    startDashboard();
+  });
+
+  document.getElementById('db-signout').addEventListener('click', async () => {
+    await sbAuth.auth.signOut();
+    showGate();
+  });
+
+  sbAuth.auth.getSession().then(({ data: { session } }) => {
+    if (session) startDashboard(); else showGate();
+  });
 </script>
 
 </body>
