@@ -170,6 +170,15 @@
     max-width: 600px;
     color: var(--text-primary);
   }
+  /* 모바일 기본: KPI 위 / 시계열 아래 세로 스택 */
+  .fn-kpi-layout { display: flex; flex-direction: column; gap: 20px; }
+  /* 데스크탑: KPI 좌측 / 시계열 우측 2단 배치라 600px 캡 해제 */
+  @media (min-width: 1600px) {
+    .fn-content-body.fn-kpi-mode { max-width: none; }
+    .fn-kpi-layout { flex-direction: row; align-items: flex-start; gap: 24px; }
+    .fn-kpi-left { flex: 1; min-width: 0; }
+    .fn-kpi-right { flex: 1; min-width: 0; }
+  }
   .fn-kpi-hero {
     background: var(--text-primary);
     color: var(--bg);
@@ -270,10 +279,15 @@
     background: none; border: 0; cursor: pointer; text-decoration: underline;
   }
 
-  /* ── 시계열 차트 — dashboard.html db-chart-* 패턴 그대로 재사용 ── */
-  .fn-chart-wrap { margin-top: 20px; }
+  /* ── 시계열 차트 — dashboard.html db-chart-* 패턴 그대로 재사용 ──
+     상단 여백은 fn-kpi-layout의 gap이 담당(좌우 배치 fn-kpi-right 안에 단독으로 들어가므로) */
+  .fn-chart-wrap { margin-top: 0; }
   .db-chart-header { display: flex; align-items: center; justify-content: space-between; }
   .db-chart-title { font-size: 16px; font-weight: 700; margin: 0; }
+  .db-chart-select {
+    font-family: inherit; font-size: 13px; color: var(--text-primary);
+    background: var(--gray-light); border: none; border-radius: 8px; padding: 6px 10px;
+  }
   .db-chart-body {
     aspect-ratio: 1.618 / 1;
     position: relative;
@@ -399,10 +413,10 @@
   async function fnRenderMissionFunnelKPI(bodyEl) {
     bodyEl.innerHTML = `<div class="fn-kpi-hero"><div class="fn-kpi-hero-label">불러오는 중…</div></div>`;
 
+    let live, history;
     const { data: { session } } = await sbAuth.auth.getSession();
     if (!session) { bodyEl.textContent = '로그인이 필요합니다.'; return; }
 
-    let live, history;
     try {
       [live, history] = await Promise.all([
         fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/mission_funnel_today`, session, {
@@ -432,35 +446,47 @@
     ];
 
     bodyEl.innerHTML = `
-      <div class="fn-kpi-hero">
-        <div class="fn-kpi-hero-label">오늘 광고 시청 (2배 보상, clear+review 합산)</div>
-        <div class="fn-kpi-hero-value">${live.ad_watched}<span>건</span></div>
-        <div class="fn-kpi-hero-sub">완주 ${live.ad_eligible}명 중 ${adPct ?? '-'}% 시청 완료 · 실시간</div>
-      </div>
-      <div class="fn-kpi-grid">
-        ${tiles.map((t) => `
-          <div class="fn-kpi-tile">
-            <div class="fn-kpi-tile-label">${t.label}</div>
-            <div class="fn-kpi-tile-value">${t.pct ?? '-'}%</div>
-            <div class="fn-kpi-tile-sub">${t.num} / ${t.den}명</div>
+      <div class="fn-kpi-layout">
+        <div class="fn-kpi-left">
+          <div class="fn-kpi-hero">
+            <div class="fn-kpi-hero-label">오늘 광고 시청 (2배 보상, clear+review 합산)</div>
+            <div class="fn-kpi-hero-value">${live.ad_watched}<span>건</span></div>
+            <div class="fn-kpi-hero-sub">완주 ${live.ad_eligible}명 중 ${adPct ?? '-'}% 시청 완료 · 실시간</div>
           </div>
-        `).join('')}
-      </div>
-      <div class="fn-chart-wrap">
-        <div class="db-chart-header">
-          <h3 class="db-chart-title">일별 추세</h3>
-        </div>
-        <div class="db-chart-body"><canvas id="fn-funnel-chart"></canvas></div>
-        <div class="db-chart-legend-row">
-          <div class="db-chart-legend" id="fn-chart-legend"></div>
-          <button class="db-legend-toggle-btn" id="fn-chart-menu-btn">지표 선택</button>
-          <div class="db-legend-menu" id="fn-chart-menu">
-            ${Object.entries(FN_SERIES_META).map(([key, m]) => `
-              <label><input type="checkbox" value="${key}" checked> ${m.label}</label>
+          <div class="fn-kpi-grid">
+            ${tiles.map((t) => `
+              <div class="fn-kpi-tile">
+                <div class="fn-kpi-tile-label">${t.label}</div>
+                <div class="fn-kpi-tile-value">${t.pct ?? '-'}%</div>
+                <div class="fn-kpi-tile-sub">${t.num} / ${t.den}명</div>
+              </div>
             `).join('')}
           </div>
         </div>
-        <p class="fn-chart-note">점선 구간 = 오늘(진행중, 미확정)</p>
+        <div class="fn-kpi-right">
+          <div class="fn-chart-wrap">
+            <div class="db-chart-header">
+              <h3 class="db-chart-title">일별 추세</h3>
+              <select class="db-chart-select" id="fn-chart-range">
+                <option value="all">전체</option>
+                <option value="7">7일</option>
+                <option value="30">30일</option>
+                <option value="180">6개월</option>
+              </select>
+            </div>
+            <div class="db-chart-body"><canvas id="fn-funnel-chart"></canvas></div>
+            <div class="db-chart-legend-row">
+              <div class="db-chart-legend" id="fn-chart-legend"></div>
+              <button class="db-legend-toggle-btn" id="fn-chart-menu-btn">지표 선택</button>
+              <div class="db-legend-menu" id="fn-chart-menu">
+                ${Object.entries(FN_SERIES_META).map(([key, m]) => `
+                  <label><input type="checkbox" value="${key}" checked> ${m.label}</label>
+                `).join('')}
+              </div>
+            </div>
+            <p class="fn-chart-note">점선 구간 = 오늘(진행중, 미확정)</p>
+          </div>
+        </div>
       </div>
     `;
 
@@ -468,14 +494,23 @@
       e.stopPropagation();
       document.getElementById('fn-chart-menu').classList.toggle('open');
     });
-    document.addEventListener('click', () => {
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#fn-chart-menu')) return; // 메뉴 내부(체크박스 등) 클릭은 안 닫음
       document.getElementById('fn-chart-menu')?.classList.remove('open');
     });
     document.querySelectorAll('#fn-chart-menu input').forEach((cb) => {
       cb.addEventListener('change', () => fnRenderFunnelChart(history));
     });
+    document.getElementById('fn-chart-range').addEventListener('change', () => fnRenderFunnelChart(history));
 
     fnRenderFunnelChart(history);
+  }
+
+  // dashboard.html rowsInRange()와 동일 — 'all'이면 전체, 아니면 최근 N일
+  function fnRowsInRange(rangeVal, rows) {
+    if (rangeVal === 'all') return rows;
+    const n = parseInt(rangeVal, 10);
+    return rows.slice(-n);
   }
 
   // dashboard.html SERIES_META와 동일한 형태 — 색상은 style-guide.md §1 아이콘 컬러 재사용
@@ -497,8 +532,10 @@
     }).join('');
   }
 
-  function fnRenderFunnelChart(rows) {
+  function fnRenderFunnelChart(allRows) {
     fnRenderChartLegend();
+    const rangeVal = document.getElementById('fn-chart-range').value;
+    const rows = fnRowsInRange(rangeVal, allRows);
     const todayStr = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 캘린더데이
     const checked = Array.from(document.querySelectorAll('#fn-chart-menu input:checked')).map((el) => el.value);
 
@@ -509,7 +546,7 @@
         data: rows.map((r) => m.val(r)),
         borderColor: m.color,
         backgroundColor: m.color,
-        tension: 0.25,
+        tension: 0,
         pointRadius: 0,
         borderWidth: 2,
         segment: {
