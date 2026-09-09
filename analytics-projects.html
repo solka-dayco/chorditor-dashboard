@@ -6,6 +6,7 @@
 <title>Chorditor Projects</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   /* ══════════════════════════════════════════════
      토큰 — dashboard.html이랑 동일(docs/style-guide.md §1·§5 기준).
@@ -161,6 +162,51 @@
     font-size: 14px;
   }
 
+  /* ── 데일리미션 분석 프로젝트: KPI 타일 (1차 디자인, 값은 정적 — 9/8 실측치) ──
+     fn-content-body를 그대로 재사용 — 골든비율/flex-center는 KPI 모드에서 해제 */
+  .fn-content-body.fn-kpi-mode {
+    aspect-ratio: auto;
+    display: block;
+    max-width: 600px;
+    color: var(--text-primary);
+  }
+  .fn-kpi-hero {
+    background: var(--text-primary);
+    color: var(--bg);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .fn-kpi-hero-label { font-size: 13px; color: rgba(255,255,255,0.65); margin-bottom: 8px; }
+  .fn-kpi-hero-value { font-size: 40px; font-weight: 700; line-height: 1; }
+  .fn-kpi-hero-value span { font-size: 18px; font-weight: 600; margin-left: 4px; color: rgba(255,255,255,0.8); }
+  .fn-kpi-hero-sub { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 10px; }
+
+  .fn-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .fn-kpi-tile {
+    background: var(--gray-light);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .fn-kpi-tile-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.3; }
+  .fn-kpi-tile-value { font-size: 26px; font-weight: 700; white-space: nowrap; }
+  .fn-kpi-tile-sub { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+  /* 모바일도 2x2 유지 — 폭이 좁아지는 만큼 패딩/폰트만 축소 */
+  @media (max-width: 480px) {
+    .fn-kpi-hero { padding: 16px; }
+    .fn-kpi-hero-value { font-size: 32px; }
+    .fn-kpi-grid { gap: 8px; }
+    .fn-kpi-tile { padding: 10px; border-radius: 10px; }
+    .fn-kpi-tile-label { font-size: 11px; margin-bottom: 4px; }
+    .fn-kpi-tile-value { font-size: 19px; }
+    .fn-kpi-tile-sub { font-size: 10px; margin-top: 4px; }
+  }
+
   .db-card {
     background: var(--surface);
     box-shadow: var(--db-card-shadow);
@@ -194,14 +240,58 @@
     background: rgba(79, 124, 255, 0.12);
     outline: 1px solid rgba(79, 124, 255, 0.4);
   }
+
+  /* ── 관리자 로그인 게이트 (dashboard.html과 동일) ── */
+  #db-gate {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #db-gate[hidden] { display: none !important; }
+  .db-gate-card {
+    width: 100%; max-width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .db-gate-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0; }
+  .db-gate-card button {
+    font-family: inherit; font-size: 16px; font-weight: 600;
+    padding: 12px; border: 0; border-radius: 8px;
+    background: var(--text-primary); color: var(--bg); cursor: pointer;
+  }
+  .db-gate-card button:disabled { opacity: .5; cursor: default; }
+  .db-gate-err { font-size: 13px; color: #e03c31; min-height: 18px; margin: 0; }
+  #db-signout {
+    font-family: inherit; font-size: 13px; color: var(--text-secondary);
+    background: none; border: 0; cursor: pointer; text-decoration: underline;
+  }
+
+  /* ── 시계열 차트 ── */
+  .fn-chart-wrap { margin-top: 20px; }
+  .fn-chart-title { font-size: 14px; font-weight: 700; margin: 0 0 12px; }
+  .fn-chart-canvas-box { position: relative; height: 220px; }
+  .fn-chart-note { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
 </style>
 </head>
 <body>
+
+<div id="db-gate">
+  <div class="db-gate-card">
+    <h1 class="db-gate-title">관리자 로그인</h1>
+    <button type="button" id="db-login-btn">Google로 로그인</button>
+    <p class="db-gate-err" id="db-gate-err"></p>
+  </div>
+</div>
 
 <div class="db-wrap">
   <div class="db-header">
     <h1 class="db-title">분석 프로젝트</h1>
     <span class="db-updated" id="db-updated">마지막 갱신: --</span>
+    <button type="button" id="db-signout">로그아웃</button>
   </div>
 
   <nav class="db-tabs">
@@ -218,12 +308,17 @@
     <p class="fn-empty-hint" id="fn-empty-hint">아직 만든 프로젝트가 없음 — 위에서 이름 입력하고 추가해줘.</p>
     <div class="fn-content" id="fn-content">
       <h2 class="fn-content-title" id="fn-content-title"></h2>
-      <div class="fn-content-body">차트/테이블 자리 (자리만 잡음)</div>
+      <div class="fn-content-body" id="fn-content-body">차트/테이블 자리 (자리만 잡음)</div>
     </div>
   </div>
 </div>
 
 <script>
+  // ── Supabase 인증 (dashboard.html과 동일 — supabase-js는 인증 전용, 조회는 raw fetch) ──
+  const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
+  const sbAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
   // 프로젝트 타이틀 생성/목록 — localStorage에 저장(이 브라우저 전용)
   const FN_STORAGE_KEY = 'chorditor_funnel_projects';
 
@@ -238,10 +333,140 @@
   let fnProjects = fnLoadProjects();
   let fnActiveId = fnProjects[0]?.id ?? null;
 
+  // 프로젝트 칩 제목 문자열로 분기 — README/dashboard_public_access_control 메모리 참고 패턴.
+  // 이 칩 제목일 때만 데일리미션 KPI 패널을 보여준다.
+  const FN_MISSION_FUNNEL_TITLE = '데일리미션 분석 프로젝트';
+
+  // ── 데일리미션 KPI: 오늘=실시간 RPC, 과거=mission_funnel_history 테이블 ──
+  let fnFunnelChart = null;
+
+  function fnPct(num, den) {
+    return den > 0 ? Math.round((num / den) * 1000) / 10 : null;
+  }
+
+  async function fnFetchAuthedJson(url, session, opts) {
+    const resp = await fetch(url, {
+      ...opts,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+        ...(opts && opts.headers),
+      },
+    });
+    if (!resp.ok) {
+      const err = new Error(`${url} → ${resp.status}`);
+      err.status = resp.status;
+      throw err;
+    }
+    return resp.json();
+  }
+
+  async function fnRenderMissionFunnelKPI(bodyEl) {
+    bodyEl.innerHTML = `<div class="fn-kpi-hero"><div class="fn-kpi-hero-label">불러오는 중…</div></div>`;
+
+    const { data: { session } } = await sbAuth.auth.getSession();
+    if (!session) { bodyEl.textContent = '로그인이 필요합니다.'; return; }
+
+    let live, history;
+    try {
+      [live, history] = await Promise.all([
+        fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/mission_funnel_today`, session, {
+          method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' },
+        }).then((rows) => rows[0]),
+        fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/mission_funnel_history?select=*&order=day.asc`, session),
+      ]);
+    } catch (e) {
+      // 관리자 uid가 아니면 mission_funnel_today()가 예외를 던지고(RPC라 400/403대)
+      // mission_funnel_history 조회도 RLS에 막혀 같은 부류의 응답이 옴 — 세션을 끊어야
+      // 다른 계정으로 재시도 가능(dashboard.html과 동일 정책).
+      if ([400, 401, 403].includes(e.status)) {
+        await sbAuth.auth.signOut();
+        showGate('이 계정에는 조회 권한이 없습니다.');
+        return;
+      }
+      bodyEl.textContent = '데이터를 불러오지 못했습니다: ' + e.message;
+      return;
+    }
+
+    const adPct = fnPct(live.ad_watched, live.ad_eligible);
+    const tiles = [
+      { label: '미션 완료율 (완주/대상유저)', pct: fnPct(live.completed, live.dau_135), num: live.completed, den: live.dau_135 },
+      { label: '관문 노출률 (노출/대상유저)', pct: fnPct(live.gate_viewed, live.dau_135), num: live.gate_viewed, den: live.dau_135 },
+      { label: '관문 통과율 (시작/노출)', pct: fnPct(live.gate_start, live.gate_viewed), num: live.gate_start, den: live.gate_viewed },
+      { label: '세션 완주율 (완주/시작)', pct: fnPct(live.completed, live.gate_start), num: live.completed, den: live.gate_start },
+    ];
+
+    bodyEl.innerHTML = `
+      <div class="fn-kpi-hero">
+        <div class="fn-kpi-hero-label">오늘 광고 시청 (2배 보상, clear+review 합산)</div>
+        <div class="fn-kpi-hero-value">${live.ad_watched}<span>건</span></div>
+        <div class="fn-kpi-hero-sub">완주 ${live.ad_eligible}명 중 ${adPct ?? '-'}% 시청 완료 · 실시간</div>
+      </div>
+      <div class="fn-kpi-grid">
+        ${tiles.map((t) => `
+          <div class="fn-kpi-tile">
+            <div class="fn-kpi-tile-label">${t.label}</div>
+            <div class="fn-kpi-tile-value">${t.pct ?? '-'}%</div>
+            <div class="fn-kpi-tile-sub">${t.num} / ${t.den}명</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="fn-chart-wrap">
+        <h3 class="fn-chart-title">일별 추세</h3>
+        <div class="fn-chart-canvas-box"><canvas id="fn-funnel-chart"></canvas></div>
+        <p class="fn-chart-note">점선 구간 = 오늘(진행중, 미확정)</p>
+      </div>
+    `;
+
+    fnRenderFunnelChart(history);
+  }
+
+  function fnRenderFunnelChart(rows) {
+    const todayStr = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 캘린더데이
+    const labels = rows.map((r) => r.day);
+    const series = [
+      { key: 'completion', label: '완료율', color: '#e03c31',
+        val: (r) => fnPct(r.completed, r.dau_135) },
+      { key: 'gate_view', label: '관문노출률', color: '#4f7cff',
+        val: (r) => fnPct(r.gate_viewed, r.dau_135) },
+      { key: 'gate_pass', label: '관문통과율', color: '#2E9E72',
+        val: (r) => fnPct(r.gate_start, r.gate_viewed) },
+      { key: 'session_complete', label: '세션완주율', color: '#E8C000',
+        val: (r) => fnPct(r.completed, r.gate_start) },
+    ];
+
+    const datasets = series.map((s) => ({
+      label: s.label,
+      data: rows.map((r) => s.val(r)),
+      borderColor: s.color,
+      backgroundColor: s.color,
+      tension: 0.25,
+      pointRadius: 3,
+      spanGaps: true,
+      segment: {
+        // 오늘로 이어지는 마지막 구간만 점선 — 미완성 데이터임을 표시
+        borderDash: (ctx) => (rows[ctx.p1DataIndex]?.day === todayStr ? [5, 4] : undefined),
+      },
+    }));
+
+    if (fnFunnelChart) fnFunnelChart.destroy();
+    fnFunnelChart = new Chart(document.getElementById('fn-funnel-chart'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { min: 0, ticks: { callback: (v) => v + '%' } } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+  }
+
   function fnRenderProjects() {
     const listEl = document.getElementById('fn-project-list');
     const hintEl = document.getElementById('fn-empty-hint');
     const contentEl = document.getElementById('fn-content');
+    const bodyEl = document.getElementById('fn-content-body');
     hintEl.style.display = fnProjects.length ? 'none' : 'block';
 
     listEl.innerHTML = fnProjects.map((p) => `
@@ -253,7 +478,16 @@
 
     const active = fnProjects.find((p) => p.id === fnActiveId);
     contentEl.classList.toggle('active', !!active);
-    if (active) document.getElementById('fn-content-title').textContent = active.title;
+    if (!active) return;
+
+    document.getElementById('fn-content-title').textContent = active.title;
+    const isMissionFunnel = active.title === FN_MISSION_FUNNEL_TITLE;
+    bodyEl.classList.toggle('fn-kpi-mode', isMissionFunnel);
+    if (isMissionFunnel) {
+      fnRenderMissionFunnelKPI(bodyEl);
+    } else {
+      bodyEl.textContent = '차트/테이블 자리 (자리만 잡음)';
+    }
   }
 
   function fnAddProject() {
@@ -289,7 +523,44 @@
     }
   });
 
-  fnRenderProjects();
+  // ── 로그인 게이트 (dashboard.html과 동일 패턴) ──
+  const gateEl = document.getElementById('db-gate');
+  const gateErr = document.getElementById('db-gate-err');
+  const loginBtn = document.getElementById('db-login-btn');
+
+  function showGate(msg) {
+    gateEl.hidden = false;
+    loginBtn.disabled = false;
+    gateErr.textContent = msg || '';
+  }
+
+  async function startProjectsPage() {
+    gateEl.hidden = true;
+    // 로그인 실패(RLS 차단) 여부는 데이터 항목을 열 때 fnFetchAuthedJson이 던지는 에러로 확인됨.
+    fnRenderProjects();
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    gateErr.textContent = '';
+    loginBtn.disabled = true;
+    const { error } = await sbAuth.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if (error) {
+      loginBtn.disabled = false;
+      gateErr.textContent = '로그인 실패: ' + error.message;
+    }
+  });
+
+  document.getElementById('db-signout').addEventListener('click', async () => {
+    await sbAuth.auth.signOut();
+    showGate();
+  });
+
+  sbAuth.auth.getSession().then(({ data: { session } }) => {
+    if (session) startProjectsPage(); else showGate();
+  });
 </script>
 
 <div class="grid-overlay" id="grid-overlay"></div>
