@@ -180,8 +180,10 @@
     .fn-kpi-right { flex: 1; min-width: 0; }
   }
   .fn-kpi-hero {
-    background: var(--text-primary);
-    color: var(--bg);
+    /* 라이트/다크 안 타는 고정 다크카드 — text-primary/bg는 다크모드에서 서로 뒤집혀서
+       하얗게 반전돼버림(2026-09-10 확인), 강조카드는 항상 어두운 배경을 유지해야 함 */
+    background: #242729;
+    color: #FAFAF9;
     border-radius: 16px;
     padding: 24px;
     margin-bottom: 16px;
