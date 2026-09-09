@@ -232,6 +232,10 @@
   .db-paywall-table th, .db-paywall-table td { padding: 14px 10px; text-align: right; white-space: nowrap; }
   .db-paywall-table th:first-child, .db-paywall-table td:first-child { text-align: left; }
   .db-paywall-table thead th { color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border); }
+  .db-paywall-sortable { cursor: pointer; user-select: none; }
+  .db-paywall-sortable:hover { color: var(--text-primary); }
+  .db-paywall-sort-arrow { display: inline-block; width: 10px; margin-left: 2px; font-size: 10px; color: var(--text-muted); }
+  .db-paywall-sortable.db-paywall-sort-active .db-paywall-sort-arrow { color: var(--blue); }
   .db-paywall-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--gray-light); }
   .db-paywall-empty { text-align: center; color: var(--text-muted); padding: 20px 0 !important; }
 
@@ -394,10 +398,10 @@
           <thead>
             <tr>
               <th>경로</th>
-              <th>조회수</th>
-              <th>유니크유저</th>
-              <th>전환수</th>
-              <th>전환율</th>
+              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow"></span></th>
+              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow"></span></th>
+              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow"></span></th>
+              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow"></span></th>
             </tr>
           </thead>
           <tbody id="paywall-table-body">
@@ -803,6 +807,9 @@
     'peak_buffer (chord_combo)': '피크 부족 · 코드조합',
     'peak_buffer (기타)': '피크 부족 · 기타',
   };
+  let _paywallRows = []; // 서버 기본순서(distinct_users desc) 그대로 보관 — 정렬 비활성 시 이걸로 복귀
+  let _paywallSort = { key: null, dir: null }; // dir: 'desc' | 'asc' | null(비활성)
+
   async function loadPaywallPaths() {
     const tbody = document.getElementById('paywall-table-body');
     const { data: { session } } = await sbAuth.auth.getSession();
@@ -825,13 +832,32 @@
       tbody.innerHTML = '<tr><td colspan="5" class="db-paywall-empty">불러오지 못함</td></tr>';
       return;
     }
-    const rows = await resp.json();
-    if (!rows.length) {
+    _paywallRows = await resp.json();
+    _paywallSort = { key: null, dir: null }; // 구간 바뀌면 정렬 상태 초기화
+    renderPaywallTable();
+  }
+
+  function _paywallPct(r) {
+    return r.distinct_users > 0 ? (r.converted_users / r.distinct_users * 100) : 0;
+  }
+
+  function renderPaywallTable() {
+    const tbody = document.getElementById('paywall-table-body');
+    if (!_paywallRows.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="db-paywall-empty">데이터 없음</td></tr>';
       return;
     }
+    let rows = _paywallRows;
+    if (_paywallSort.dir) {
+      const key = _paywallSort.key;
+      const valueOf = key === 'pct' ? _paywallPct : (r) => r[key];
+      rows = [..._paywallRows].sort((a, b) => {
+        const diff = valueOf(a) - valueOf(b);
+        return _paywallSort.dir === 'desc' ? -diff : diff;
+      });
+    }
     tbody.innerHTML = rows.map((r) => {
-      const pct = r.distinct_users > 0 ? (r.converted_users / r.distinct_users * 100).toFixed(2) : '0.00';
+      const pct = _paywallPct(r).toFixed(2);
       return `<tr>
         <td>${PAYWALL_PATH_LABELS[r.path] || r.path}</td>
         <td>${r.views}</td>
@@ -840,8 +866,32 @@
         <td>${pct}%</td>
       </tr>`;
     }).join('');
+
+    document.querySelectorAll('.db-paywall-sortable').forEach((th) => {
+      const key = th.dataset.sortKey;
+      const arrow = th.querySelector('.db-paywall-sort-arrow');
+      const active = _paywallSort.key === key && _paywallSort.dir;
+      th.classList.toggle('db-paywall-sort-active', !!active);
+      arrow.textContent = active ? (_paywallSort.dir === 'desc' ? '▼' : '▲') : '';
+    });
   }
+
   document.getElementById('paywall-window').addEventListener('change', loadPaywallPaths);
+  document.querySelectorAll('.db-paywall-sortable').forEach((th) => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (_paywallSort.key !== key) {
+        _paywallSort = { key, dir: 'desc' };
+      } else if (_paywallSort.dir === 'desc') {
+        _paywallSort = { key, dir: 'asc' };
+      } else if (_paywallSort.dir === 'asc') {
+        _paywallSort = { key: null, dir: null };
+      } else {
+        _paywallSort = { key, dir: 'desc' };
+      }
+      renderPaywallTable();
+    });
+  });
 
   // ── 로그인 게이트 ──
   const gateEl = document.getElementById('db-gate');
