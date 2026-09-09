@@ -401,8 +401,8 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
   const sbAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ── Chart.js 전역 색상 — CSS 변수(다크모드 시 media query가 자동 재정의)에서 읽어옴,
-  //    JS에서 matchMedia로 따로 분기하지 않고 CSS를 단일 소스로 삼음 ──
+  // ── Chart.js 전역 색상 — CSS 변수(다크모드 토글 시 [data-theme=dark]가 재정의)에서 읽어옴,
+  //    JS는 getComputedStyle로만 읽고 색상값 자체는 CSS를 단일 소스로 삼음 ──
   function fnCssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
@@ -417,6 +417,7 @@
 
   // ── 데일리미션 KPI: 오늘=실시간 RPC, 과거=mission_funnel_history 테이블 ──
   let fnFunnelChart = null;
+  let fnCachedHistory = null; // 테마 토글 시 재조회 없이 차트만 다시 그리는 용도
 
   function fnPct(num, den) {
     return den > 0 ? Math.round((num / den) * 1000) / 10 : null;
@@ -466,6 +467,7 @@
       return;
     }
 
+    fnCachedHistory = history;
     const adPct = fnPct(live.ad_watched, live.ad_eligible);
     const tiles = [
       { label: '미션 완료율 (완주/대상유저)', pct: fnPct(live.completed, live.dau_135), num: live.completed, den: live.dau_135 },
@@ -895,8 +897,12 @@
       themeToggleBtn.textContent = '🌙 다크모드';
     }
     fnApplyChartThemeDefaults();
-    // 이미 그려진 차트가 있으면 새 색상으로 다시 그림(활성 섹션만)
     if (!gateEl.hidden) return; // 로그인 전이면 아직 섹션 없음
+    // 데일리미션 탭은 재조회 없이 차트만 다시 그림(색만 바뀌는데 매번 Supabase 재요청하면 낭비)
+    if (fnActiveId === 'mission-funnel' && fnCachedHistory) {
+      fnRenderFunnelChart(fnCachedHistory);
+      return;
+    }
     fnRenderSections();
   }
   themeToggleBtn.addEventListener('click', () => {
