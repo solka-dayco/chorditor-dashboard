@@ -23,6 +23,7 @@
     --text-muted: #a09b95;
     --accent: #e03c31;
     --blue: #4f7cff;
+    --brand: #1a1a1a;
 
     /* 모바일(360~480px) 그리드 — style.css :root 기본값과 동일 */
     --grid-margin: 20px;
@@ -32,6 +33,9 @@
 
     /* 카드 스타일1: 테두리없음, 그림자 y2px/blur16px 진한검정 */
     --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+
+    /* Chart.js에 JS로 넘겨줄 값 — CSS를 단일 소스로 삼고 JS는 getComputedStyle로만 읽음 */
+    --chart-grid: rgba(0, 0, 0, 0.08);
   }
   @media (min-width: 1600px) {
     :root {
@@ -43,6 +47,36 @@
       --grid-container-max: min(100%, 1264px);
     }
   }
+  /* ── 다크모드 — analytics-projects.html과 동일 토글·팔레트, localStorage 키도 공유 ──
+     Chords_editor 앱은 강제 라이트(다크 차단) 정책이지만 이 관리자 도구는 별개 사이트라
+     그 컨벤션을 따르지 않고 실제 다크 팔레트를 적용한다. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16181A;
+    --surface: #1E2124;
+    --border: #33373C;
+    --gray-light: #26292D;
+    --text-primary: #F2F1EF;
+    --text-secondary: #B5AFA8;
+    --text-muted: #7C766F;
+    --accent: #FF6B5E;
+    --blue: #6C93FF;
+    --brand: #FFFFFF;
+    --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+    --chart-grid: rgba(255, 255, 255, 0.18);
+  }
+  .db-theme-toggle {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--gray-light);
+    border: none;
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .db-theme-toggle:hover { color: var(--text-primary); }
 
   * { box-sizing: border-box; }
   body {
@@ -286,7 +320,7 @@
     background: var(--text-primary); color: var(--bg); cursor: pointer;
   }
   .db-gate-card button:disabled { opacity: .5; cursor: default; }
-  .db-gate-err { font-size: 13px; color: #e03c31; min-height: 18px; margin: 0; }
+  .db-gate-err { font-size: 13px; color: var(--accent); min-height: 18px; margin: 0; }
   #db-signout {
     font-family: inherit; font-size: 13px; color: var(--text-secondary);
     background: none; border: 0; cursor: pointer; text-decoration: underline;
@@ -313,6 +347,7 @@
   <nav class="db-tabs">
     <a href="dashboard.html" class="active">대시보드</a>
     <a href="analytics-projects.html">분석 프로젝트</a>
+    <button type="button" class="db-theme-toggle" id="db-theme-toggle">🌙 다크모드</button>
   </nav>
 
   <div class="db-grid">
@@ -456,6 +491,17 @@
     });
   });
 
+  // ── Chart.js 전역 색상 — CSS 변수(다크모드 토글 시 [data-theme=dark]가 재정의)에서 읽어옴 ──
+  function dbCssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  Chart.defaults.font = { family: 'Pretendard', size: 12 };
+  function dbApplyChartThemeDefaults() {
+    Chart.defaults.color = dbCssVar('--text-secondary');
+  }
+  dbApplyChartThemeDefaults();
+  function dbChartGridColor() { return dbCssVar('--chart-grid'); }
+
   // ── DB 연동: dau_wau_mau_history 최신 2일치(오늘/어제) 불러와서 통계카드 채움 ──
   const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
@@ -592,7 +638,7 @@
         ctx.moveTo(x, top);
         ctx.lineTo(x, bottom);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(36, 39, 41, 0.25)';
+        ctx.strokeStyle = 'rgba(128, 128, 128, 0.4)'; // 중립 회색 — 라이트/다크 둘 다에서 무난히 보임
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.restore();
@@ -657,16 +703,17 @@
           },
         },
         scales: {
-          x: { ticks: { maxTicksLimit: 8 } },
+          x: { grid: { color: dbChartGridColor() }, ticks: { maxTicksLimit: 8 } },
           yCount: {
             display: hasCount,
             position: 'left',
+            grid: { color: dbChartGridColor() },
             title: { display: hasCount, text: '명' },
           },
           yPct: {
             display: hasPct,
             position: hasCount ? 'right' : 'left', // count축 없이 %류만 단독 선택되면 좌측으로
-            grid: { drawOnChartArea: !hasCount }, // 단독일 땐 그리드 그려도 안 겹침
+            grid: { drawOnChartArea: !hasCount, color: dbChartGridColor() }, // 단독일 땐 그리드 그려도 안 겹침
             ticks: { callback: (v) => v + '%' },
             title: { display: hasPct, text: '%' },
           },
@@ -733,16 +780,17 @@
           },
         },
         scales: {
-          x: { ticks: { maxTicksLimit: 8 } },
+          x: { grid: { color: dbChartGridColor() }, ticks: { maxTicksLimit: 8 } },
           yDaily: {
             display: hasDaily,
             position: 'left',
+            grid: { color: dbChartGridColor() },
             title: { display: hasDaily, text: '일별 신규가입(명)' },
           },
           yCumulative: {
             display: hasCumulative,
             position: hasDaily ? 'right' : 'left', // 단독 선택 시 좌측으로
-            grid: { drawOnChartArea: !hasDaily },
+            grid: { drawOnChartArea: !hasDaily, color: dbChartGridColor() },
             title: { display: hasCumulative, text: '누적가입(명)' },
           },
         },
@@ -941,6 +989,33 @@
     await sbAuth.auth.signOut();
     showGate();
   });
+
+  // ── 다크모드 수동 토글 — analytics-projects.html과 같은 localStorage 키 공유,
+  //    한쪽에서 바꾸면 다른 페이지 열 때도 그대로 유지됨. 재조회 없이 캐시로 다시 그림. ──
+  const themeToggleBtn = document.getElementById('db-theme-toggle');
+  function dbApplyTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      themeToggleBtn.textContent = '☀️ 라이트모드';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      themeToggleBtn.textContent = '🌙 다크모드';
+    }
+    dbApplyChartThemeDefaults();
+    if (gateEl.hidden) {
+      // historyRows/_paywallRows는 이미 메모리에 있으니 재조회 없이 색만 다시 그림
+      if (historyRows.length) { buildActiveChart(); buildSignupsChart(); }
+      if (_paywallRows.length) renderPaywallTable();
+    }
+  }
+  themeToggleBtn.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('chorditor-theme', next); } catch (e) {}
+    dbApplyTheme(next);
+  });
+  let dbInitialTheme = 'light';
+  try { dbInitialTheme = localStorage.getItem('chorditor-theme') || 'light'; } catch (e) {}
+  dbApplyTheme(dbInitialTheme);
 
   sbAuth.auth.getSession().then(({ data: { session } }) => {
     if (session) startDashboard(); else showGate();
