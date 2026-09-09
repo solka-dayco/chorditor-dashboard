@@ -30,6 +30,13 @@
     --grid-container-max: 100%;
 
     --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+
+    /* Chart.js에 JS로 넘겨줄 값들 — CSS 쪽에서 다크모드 분기하면 JS는 getComputedStyle로만 읽음 */
+    --chart-grid: #ECECEA;
+    --funnel-1: rgba(26, 26, 26, 0.25);
+    --funnel-2: rgba(26, 26, 26, 0.5);
+    --funnel-3: rgba(26, 26, 26, 0.75);
+    --funnel-4: #1a1a1a;
   }
   @media (min-width: 1600px) {
     :root {
@@ -37,6 +44,30 @@
       --grid-gutter: 24px;
       --grid-cols: 12;
       --grid-container-max: min(100%, 1264px);
+    }
+  }
+  /* ── 다크모드 (analytics-projects.html 전용, 2026-09-09 신설) ──
+     Chords_editor 앱은 강제 라이트(다크 차단) 정책이지만, 이 관리자 도구는
+     실제 다크 팔레트로 대응한다 — 별개 사이트라 앱의 차단 컨벤션 안 따름. */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #16181A;
+      --surface: #1E2124;
+      --border: #33373C;
+      --gray-light: #26292D;
+      --text-primary: #F2F1EF;
+      --text-secondary: #B5AFA8;
+      --text-muted: #7C766F;
+      --accent: #FF6B5E;
+      --blue: #6C93FF;
+      --brand: #F2F1EF;
+      --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+      --chart-grid: rgba(255, 255, 255, 0.08);
+      --funnel-1: rgba(255, 255, 255, 0.15);
+      --funnel-2: rgba(255, 255, 255, 0.35);
+      --funnel-3: rgba(255, 255, 255, 0.6);
+      --funnel-4: #F2F1EF;
     }
   }
 
@@ -230,7 +261,7 @@
     background: var(--text-primary); color: var(--bg); cursor: pointer;
   }
   .db-gate-card button:disabled { opacity: .5; cursor: default; }
-  .db-gate-err { font-size: 13px; color: #e03c31; min-height: 18px; margin: 0; }
+  .db-gate-err { font-size: 13px; color: var(--accent); min-height: 18px; margin: 0; }
   #db-signout {
     font-family: inherit; font-size: 13px; color: var(--text-secondary);
     background: none; border: 0; cursor: pointer; text-decoration: underline;
@@ -356,6 +387,15 @@
   const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
   const sbAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ── Chart.js 전역 색상 — CSS 변수(다크모드 시 media query가 자동 재정의)에서 읽어옴,
+  //    JS에서 matchMedia로 따로 분기하지 않고 CSS를 단일 소스로 삼음 ──
+  function fnCssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  Chart.defaults.font = { family: 'Pretendard', size: 12 };
+  Chart.defaults.color = fnCssVar('--text-secondary');
+  const CHART_GRID_COLOR = fnCssVar('--chart-grid');
 
   // ── 데일리미션 KPI: 오늘=실시간 RPC, 과거=mission_funnel_history 테이블 ──
   let fnFunnelChart = null;
@@ -541,8 +581,8 @@
           tooltip: { callbacks: { label: (item) => `${item.dataset.label}: ${item.parsed.y.toFixed(1)}%` } },
         },
         scales: {
-          x: { ticks: { maxTicksLimit: 8 } },
-          y: { min: 0, ticks: { callback: (v) => v + '%' } },
+          x: { grid: { color: CHART_GRID_COLOR }, ticks: { maxTicksLimit: 8 } },
+          y: { min: 0, grid: { color: CHART_GRID_COLOR }, ticks: { callback: (v) => v + '%' } },
         },
       },
     });
@@ -554,7 +594,7 @@
     const FUNNEL_LABELS = ['지급', '재접속', '알림노출', '결제(알림경유)'];
     const FUNNEL_VALUES = [7000, 5320, 3980, 62];
     const FUNNEL_PCTS = FUNNEL_VALUES.map((v) => +(v / FUNNEL_VALUES[0] * 100).toFixed(1));
-    const FUNNEL_COLORS = ['rgba(26,26,26,0.25)', 'rgba(26,26,26,0.5)', 'rgba(26,26,26,0.75)', '#1a1a1a'];
+    const FUNNEL_COLORS = [fnCssVar('--funnel-1'), fnCssVar('--funnel-2'), fnCssVar('--funnel-3'), fnCssVar('--funnel-4')];
 
     const PROGRESS_CURRENT = 118;
     const PROGRESS_GOAL = 300;
@@ -653,8 +693,8 @@
         labels: trendDays,
         datasets: [{
           data: trendValues,
-          borderColor: '#1a1a1a',
-          backgroundColor: 'rgba(26,26,26,0.06)',
+          borderColor: fnCssVar('--brand'),
+          backgroundColor: fnCssVar('--funnel-1'),
           fill: true,
           tension: 0.3,
           pointRadius: 0,
@@ -666,7 +706,7 @@
         plugins: { legend: { display: false } },
         scales: {
           x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
-          y: { grid: { color: '#ECECEA' } },
+          y: { grid: { color: CHART_GRID_COLOR } },
         },
       },
       plugins: [{
@@ -677,7 +717,7 @@
           const { ctx, chartArea, scales } = chart;
           const x = scales.x.getPixelForValue(idx);
           ctx.save();
-          ctx.strokeStyle = '#e03c31';
+          ctx.strokeStyle = fnCssVar('--accent');
           ctx.setLineDash([4, 3]);
           ctx.lineWidth = 1.5;
           ctx.beginPath();
@@ -704,7 +744,7 @@
           },
           scales: {
             x: { grid: { display: false } },
-            y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v + '%' } },
+            y: { grid: { color: CHART_GRID_COLOR }, ticks: { callback: (v) => v + '%' } },
           },
         },
       });
@@ -740,7 +780,7 @@
         },
         scales: {
           x: { grid: { display: false } },
-          y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v + '%' } },
+          y: { grid: { color: CHART_GRID_COLOR }, ticks: { callback: (v) => v + '%' } },
         },
       },
     });
