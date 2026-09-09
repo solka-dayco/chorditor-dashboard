@@ -398,10 +398,10 @@
           <thead>
             <tr>
               <th>경로</th>
-              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow">↕</span></th>
-              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow">↕</span></th>
-              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow">↕</span></th>
-              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow">↕</span></th>
+              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow">▾</span></th>
+              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow">▾</span></th>
+              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow">▾</span></th>
+              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow">▾</span></th>
             </tr>
           </thead>
           <tbody id="paywall-table-body">
@@ -872,7 +872,7 @@
       const arrow = th.querySelector('.db-paywall-sort-arrow');
       const active = _paywallSort.key === key && _paywallSort.dir;
       th.classList.toggle('db-paywall-sort-active', !!active);
-      arrow.textContent = active ? (_paywallSort.dir === 'desc' ? '▼' : '▲') : '↕';
+      arrow.textContent = (active && _paywallSort.dir === 'asc') ? '▴' : '▾';
     });
   }
 
