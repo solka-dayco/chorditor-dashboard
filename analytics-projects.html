@@ -270,10 +270,45 @@
     background: none; border: 0; cursor: pointer; text-decoration: underline;
   }
 
-  /* ── 시계열 차트 ── */
+  /* ── 시계열 차트 — dashboard.html db-chart-* 패턴 그대로 재사용 ── */
   .fn-chart-wrap { margin-top: 20px; }
-  .fn-chart-title { font-size: 14px; font-weight: 700; margin: 0 0 12px; }
-  .fn-chart-canvas-box { position: relative; height: 220px; }
+  .db-chart-header { display: flex; align-items: center; justify-content: space-between; }
+  .db-chart-title { font-size: 16px; font-weight: 700; margin: 0; }
+  .db-chart-body {
+    aspect-ratio: 1.618 / 1;
+    position: relative;
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .db-chart-body canvas { width: 100% !important; height: 100% !important; }
+  .db-chart-legend-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; row-gap: 8px; flex-shrink: 0;
+    padding-top: 12px; position: relative;
+  }
+  .db-chart-legend {
+    display: flex; flex-wrap: wrap; row-gap: 6px; gap: 16px;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .db-legend-item { display: flex; align-items: center; gap: 6px; }
+  .db-legend-item--off { color: var(--text-muted); }
+  .db-legend-dot { width: 8px; height: 8px; flex-shrink: 0; }
+  .db-legend-toggle-btn {
+    font-family: inherit; font-size: 12px; color: var(--text-secondary);
+    background: var(--gray-light); border: none; border-radius: 8px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  .db-legend-menu {
+    display: none; position: absolute; right: 0; bottom: calc(100% + 8px);
+    background: var(--surface); box-shadow: var(--db-card-shadow);
+    border-radius: 12px; padding: 10px; z-index: 10; min-width: 160px;
+  }
+  .db-legend-menu.open { display: block; }
+  .db-legend-menu label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; padding: 6px 4px; cursor: pointer;
+  }
   .fn-chart-note { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
 </style>
 </head>
@@ -412,52 +447,95 @@
         `).join('')}
       </div>
       <div class="fn-chart-wrap">
-        <h3 class="fn-chart-title">일별 추세</h3>
-        <div class="fn-chart-canvas-box"><canvas id="fn-funnel-chart"></canvas></div>
+        <div class="db-chart-header">
+          <h3 class="db-chart-title">일별 추세</h3>
+        </div>
+        <div class="db-chart-body"><canvas id="fn-funnel-chart"></canvas></div>
+        <div class="db-chart-legend-row">
+          <div class="db-chart-legend" id="fn-chart-legend"></div>
+          <button class="db-legend-toggle-btn" id="fn-chart-menu-btn">지표 선택</button>
+          <div class="db-legend-menu" id="fn-chart-menu">
+            ${Object.entries(FN_SERIES_META).map(([key, m]) => `
+              <label><input type="checkbox" value="${key}" checked> ${m.label}</label>
+            `).join('')}
+          </div>
+        </div>
         <p class="fn-chart-note">점선 구간 = 오늘(진행중, 미확정)</p>
       </div>
     `;
 
+    document.getElementById('fn-chart-menu-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('fn-chart-menu').classList.toggle('open');
+    });
+    document.addEventListener('click', () => {
+      document.getElementById('fn-chart-menu')?.classList.remove('open');
+    });
+    document.querySelectorAll('#fn-chart-menu input').forEach((cb) => {
+      cb.addEventListener('change', () => fnRenderFunnelChart(history));
+    });
+
     fnRenderFunnelChart(history);
   }
 
-  function fnRenderFunnelChart(rows) {
-    const todayStr = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 캘린더데이
-    const labels = rows.map((r) => r.day);
-    const series = [
-      { key: 'completion', label: '완료율', color: '#e03c31',
-        val: (r) => fnPct(r.completed, r.dau_135) },
-      { key: 'gate_view', label: '관문노출률', color: '#4f7cff',
-        val: (r) => fnPct(r.gate_viewed, r.dau_135) },
-      { key: 'gate_pass', label: '관문통과율', color: '#2E9E72',
-        val: (r) => fnPct(r.gate_start, r.gate_viewed) },
-      { key: 'session_complete', label: '세션완주율', color: '#E8C000',
-        val: (r) => fnPct(r.completed, r.gate_start) },
-    ];
+  // dashboard.html SERIES_META와 동일한 형태 — 색상은 style-guide.md §1 아이콘 컬러 재사용
+  const FN_SERIES_META = {
+    completion:       { label: '완료율',     color: '#e03c31', val: (r) => fnPct(r.completed, r.dau_135) },
+    gate_view:        { label: '관문노출률',  color: '#4f7cff', val: (r) => fnPct(r.gate_viewed, r.dau_135) },
+    gate_pass:        { label: '관문통과율',  color: '#2E9E72', val: (r) => fnPct(r.gate_start, r.gate_viewed) },
+    session_complete: { label: '세션완주율',  color: '#E8C000', val: (r) => fnPct(r.completed, r.gate_start) },
+  };
 
-    const datasets = series.map((s) => ({
-      label: s.label,
-      data: rows.map((r) => s.val(r)),
-      borderColor: s.color,
-      backgroundColor: s.color,
-      tension: 0.25,
-      pointRadius: 3,
-      spanGaps: true,
-      segment: {
-        // 오늘로 이어지는 마지막 구간만 점선 — 미완성 데이터임을 표시
-        borderDash: (ctx) => (rows[ctx.p1DataIndex]?.day === todayStr ? [5, 4] : undefined),
-      },
-    }));
+  function fnRenderChartLegend() {
+    const checked = new Set(Array.from(document.querySelectorAll('#fn-chart-menu input:checked')).map((el) => el.value));
+    const legend = document.getElementById('fn-chart-legend');
+    legend.innerHTML = Object.entries(FN_SERIES_META).map(([key, m]) => {
+      const on = checked.has(key);
+      const dotColor = on ? m.color : 'var(--border)';
+      return `<span class="db-legend-item${on ? '' : ' db-legend-item--off'}">` +
+        `<span class="db-legend-dot" style="background:${dotColor};"></span>${m.label}</span>`;
+    }).join('');
+  }
+
+  function fnRenderFunnelChart(rows) {
+    fnRenderChartLegend();
+    const todayStr = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 캘린더데이
+    const checked = Array.from(document.querySelectorAll('#fn-chart-menu input:checked')).map((el) => el.value);
+
+    const datasets = checked.map((key) => {
+      const m = FN_SERIES_META[key];
+      return {
+        label: m.label,
+        data: rows.map((r) => m.val(r)),
+        borderColor: m.color,
+        backgroundColor: m.color,
+        tension: 0.25,
+        pointRadius: 0,
+        borderWidth: 2,
+        segment: {
+          // 오늘로 이어지는 마지막 구간만 점선 — 미완성 데이터임을 표시
+          borderDash: (ctx) => (rows[ctx.p1DataIndex]?.day === todayStr ? [5, 4] : undefined),
+        },
+      };
+    });
 
     if (fnFunnelChart) fnFunnelChart.destroy();
     fnFunnelChart = new Chart(document.getElementById('fn-funnel-chart'), {
       type: 'line',
-      data: { labels, datasets },
+      data: { labels: rows.map((r) => r.day), datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        scales: { y: { min: 0, ticks: { callback: (v) => v + '%' } } },
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (item) => `${item.dataset.label}: ${item.parsed.y.toFixed(1)}%` } },
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8 } },
+          y: { min: 0, ticks: { callback: (v) => v + '%' } },
+        },
       },
     });
   }
