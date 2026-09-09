@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
 <style>
   /* ══════════════════════════════════════════════
      토큰 — docs/style-guide.md §1(컬러)·§5(그리드) 기준.
@@ -234,7 +235,8 @@
   .db-paywall-table thead th { color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border); }
   .db-paywall-sortable { cursor: pointer; user-select: none; }
   .db-paywall-sortable:hover { color: var(--text-primary); }
-  .db-paywall-sort-arrow { display: inline-block; width: 10px; margin-left: 2px; font-size: 10px; color: var(--text-muted); }
+  .db-paywall-sort-arrow { display: inline-flex; vertical-align: -3px; margin-left: 3px; color: var(--text-muted); }
+  .db-paywall-sort-arrow svg { width: 16px; height: 16px; stroke-width: 2.5px; }
   .db-paywall-sortable.db-paywall-sort-active .db-paywall-sort-arrow { color: var(--blue); }
   .db-paywall-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--gray-light); }
   .db-paywall-empty { text-align: center; color: var(--text-muted); padding: 20px 0 !important; }
@@ -398,10 +400,10 @@
           <thead>
             <tr>
               <th>경로</th>
-              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow">▾</span></th>
-              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow">▾</span></th>
-              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow">▾</span></th>
-              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow">▾</span></th>
+              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
             </tr>
           </thead>
           <tbody id="paywall-table-body">
@@ -869,10 +871,11 @@
 
     document.querySelectorAll('.db-paywall-sortable').forEach((th) => {
       const key = th.dataset.sortKey;
-      const arrow = th.querySelector('.db-paywall-sort-arrow');
       const active = _paywallSort.key === key && _paywallSort.dir;
+      const isAsc = active && _paywallSort.dir === 'asc';
       th.classList.toggle('db-paywall-sort-active', !!active);
-      arrow.textContent = (active && _paywallSort.dir === 'asc') ? '▴' : '▾';
+      th.querySelector('.db-paywall-arrow-down').hidden = isAsc;
+      th.querySelector('.db-paywall-arrow-up').hidden = !isAsc;
     });
   }
 
@@ -892,6 +895,7 @@
       renderPaywallTable();
     });
   });
+  if (typeof lucide !== 'undefined') lucide.createIcons(); // 정렬 화살표(chevron) 아이콘 렌더
 
   // ── 로그인 게이트 ──
   const gateEl = document.getElementById('db-gate');
