@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>7일 체험 실험 대시보드 (목업)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  /* dashboard.html 토큰/카드 스타일 그대로 재사용 (로그인/Supabase 없음 — 목업 전용) */
+  :root {
+    --bg: #FAFAF9;
+    --surface: #ffffff;
+    --border: #d9d4cc;
+    --gray-light: #ECECEA;
+    --text-primary: #242729;
+    --text-secondary: #6b6560;
+    --text-muted: #a09b95;
+    --accent: #e03c31;
+    --blue: #4f7cff;
+    --icon-green: #2E9E72;
+
+    --grid-margin: 20px;
+    --grid-gutter: 16px;
+    --grid-cols: 6;
+    --grid-container-max: 100%;
+
+    --db-card-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+  }
+  @media (min-width: 1600px) {
+    :root {
+      --grid-margin: 32px;
+      --grid-gutter: 24px;
+      --grid-cols: 12;
+      --grid-container-max: min(100%, 1264px);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .db-wrap { max-width: var(--grid-container-max); margin-inline: auto; padding: var(--grid-margin); }
+
+  .db-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  .db-title { font-size: 20px; font-weight: 700; margin: 0; }
+  .db-updated { font-size: 13px; color: var(--text-muted); }
+
+  .mock-banner {
+    background: #FDF8E3;
+    border: 1px solid #E8C000;
+    color: #6b6009;
+    font-size: 13px;
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-bottom: 24px;
+  }
+
+  .db-grid { display: grid; grid-template-columns: repeat(var(--grid-cols), 1fr); gap: var(--grid-gutter); }
+
+  .db-chart-box {
+    grid-column: span var(--grid-cols);
+    background: var(--surface);
+    box-shadow: var(--db-card-shadow);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .db-chart-box--half { grid-column: span var(--grid-cols); }
+  @media (min-width: 1600px) {
+    .db-chart-box--half { grid-column: span 6; }
+  }
+
+  .db-chart-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
+  .db-chart-title { font-size: 16px; font-weight: 700; margin: 0; }
+  .db-chart-sub { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+
+  .db-chart-body { position: relative; color: var(--text-muted); font-size: 14px; }
+  .db-chart-body canvas { width: 100% !important; height: 100% !important; }
+
+  /* 카드1: 메인 퍼널 */
+  #card-funnel .db-chart-body { aspect-ratio: 2.4 / 1; margin-top: 16px; }
+
+  /* 카드2: 진행 카운터 */
+  .progress-count-row { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 10px; }
+  .progress-count-num { font-size: 40px; font-weight: 700; }
+  .progress-count-goal { font-size: 18px; color: var(--text-muted); }
+  .progress-bar-track { width: 100%; height: 14px; background: var(--gray-light); border-radius: 999px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--blue); border-radius: 999px; transition: width 0.6s ease; }
+  .progress-note { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; }
+  #card-progress .db-chart-body { aspect-ratio: 3.2 / 1; margin-top: 14px; }
+
+  /* 카드3: 코호트 비교 */
+  .cohort-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 16px; }
+  @media (max-width: 899px) {
+    .cohort-grid { grid-template-columns: 1fr; }
+  }
+  .cohort-sub { display: flex; flex-direction: column; }
+  .cohort-sub-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin: 0 0 8px; }
+  .cohort-sub .db-chart-body { aspect-ratio: 1.9 / 1; }
+
+  .grid-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    max-width: var(--grid-container-max);
+    margin-inline: auto;
+    padding-inline: var(--grid-margin);
+    grid-template-columns: repeat(var(--grid-cols), 1fr);
+    gap: var(--grid-gutter);
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .grid-overlay.active { display: grid; }
+  .grid-overlay > div { height: 100%; background: rgba(79, 124, 255, 0.12); outline: 1px solid rgba(79, 124, 255, 0.4); }
+</style>
+</head>
+<body>
+
+<div class="db-wrap">
+  <div class="db-header">
+    <h1 class="db-title">7일 체험 만료 후 전환율 실험</h1>
+    <span class="db-updated">목업 데이터 — 로그인/Supabase 연결 없음</span>
+  </div>
+
+  <div class="mock-banner">
+    ⚠️ 이 페이지는 <code>docs/trial-experiment-dashboard-plan.md</code> 기반 UI 디자인 전용 목업입니다.
+    전부 하드코딩된 가짜 데이터이며 실제 쿼리/DB와 연결되지 않았습니다.
+  </div>
+
+  <div class="db-grid">
+    <!-- 카드1: 메인 퍼널 -->
+    <div class="db-chart-box" id="card-funnel">
+      <div class="db-chart-header">
+        <div>
+          <h2 class="db-chart-title">체험판 전환 퍼널</h2>
+          <p class="db-chart-sub">지급 → 재접속 → 알림노출 → 결제(알림경유)</p>
+        </div>
+      </div>
+      <div class="db-chart-body"><canvas id="canvas-funnel"></canvas></div>
+    </div>
+
+    <!-- 카드2: 진행 카운터 -->
+    <div class="db-chart-box db-chart-box--half" id="card-progress">
+      <div class="db-chart-header">
+        <div>
+          <h2 class="db-chart-title">실험 진행률</h2>
+          <p class="db-chart-sub">만료자 수 / 300 (정지조건)</p>
+        </div>
+      </div>
+      <div class="progress-count-row">
+        <span class="progress-count-num" id="progress-num">118</span>
+        <span class="progress-count-goal">/ 300</span>
+      </div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+      <p class="progress-note">8일차부터 만료자 발생 시작 (지연출발 곡선, 버그 아님)</p>
+      <div class="db-chart-body"><canvas id="canvas-progress-trend"></canvas></div>
+    </div>
+
+    <!-- 카드3: 코호트 비교 -->
+    <div class="db-chart-box db-chart-box--half" id="card-cohort">
+      <div class="db-chart-header">
+        <div>
+          <h2 class="db-chart-title">코호트별 전환율 비교</h2>
+          <p class="db-chart-sub">그룹별 알림경유 결제 전환율(%)</p>
+        </div>
+      </div>
+      <div class="cohort-grid">
+        <div class="cohort-sub">
+          <p class="cohort-sub-title">성별</p>
+          <div class="db-chart-body"><canvas id="canvas-cohort-gender"></canvas></div>
+        </div>
+        <div class="cohort-sub">
+          <p class="cohort-sub-title">나이대</p>
+          <div class="db-chart-body"><canvas id="canvas-cohort-age"></canvas></div>
+        </div>
+        <div class="cohort-sub">
+          <p class="cohort-sub-title">페르소나</p>
+          <div class="db-chart-body"><canvas id="canvas-cohort-persona"></canvas></div>
+        </div>
+        <div class="cohort-sub">
+          <p class="cohort-sub-title">피크소진 횟수구간</p>
+          <div class="db-chart-body"><canvas id="canvas-cohort-peak"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-overlay" id="grid-overlay"></div>
+
+<script>
+  // ── 그리드 오버레이(G키 토글, dashboard.html과 동일 패턴) ──
+  const overlay = document.getElementById('grid-overlay');
+  for (let i = 0; i < 12; i++) { const d = document.createElement('div'); overlay.appendChild(d); }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'g' || e.key === 'G') overlay.classList.toggle('active');
+  });
+
+  const CHART_FONT = { family: 'Pretendard', size: 12 };
+  Chart.defaults.font = CHART_FONT;
+  Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+
+  // ── 카드1: 메인 퍼널 (목업 수치, plan.md §3-1 정의 기준) ──
+  const FUNNEL_LABELS = ['지급', '재접속', '알림노출', '결제(알림경유)'];
+  const FUNNEL_VALUES = [7000, 5320, 3980, 62];
+  new Chart(document.getElementById('canvas-funnel'), {
+    type: 'bar',
+    data: {
+      labels: FUNNEL_LABELS,
+      datasets: [{
+        data: FUNNEL_VALUES,
+        backgroundColor: ['#4f7cff', '#7B9CFF', '#A9BEFF', '#e03c31'],
+        borderRadius: 6,
+        barPercentage: 0.55,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const pct = (ctx.raw / FUNNEL_VALUES[0] * 100).toFixed(1);
+              return `${ctx.raw.toLocaleString()}명 (전체 대비 ${pct}%)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v.toLocaleString() } },
+        y: { grid: { display: false } },
+      },
+    },
+  });
+
+  // ── 카드2: 진행 카운터 ──
+  const PROGRESS_CURRENT = 118;
+  const PROGRESS_GOAL = 300;
+  document.getElementById('progress-fill').style.width = (PROGRESS_CURRENT / PROGRESS_GOAL * 100) + '%';
+
+  // 지연출발 곡선(1일차 배포, 7일간 0, 8일차부터 증가) — 목업 30일치
+  const trendDays = Array.from({ length: 30 }, (_, i) => `D+${i + 1}`);
+  const trendValues = trendDays.map((_, i) => {
+    const day = i + 1;
+    if (day < 8) return 0;
+    return Math.round(PROGRESS_CURRENT * Math.min(1, (day - 7) / 23) ** 1.3);
+  });
+  new Chart(document.getElementById('canvas-progress-trend'), {
+    type: 'line',
+    data: {
+      labels: trendDays,
+      datasets: [{
+        data: trendValues,
+        borderColor: '#4f7cff',
+        backgroundColor: 'rgba(79,124,255,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+        y: { grid: { color: '#ECECEA' } },
+      },
+    },
+  });
+
+  // ── 카드3: 코호트 비교 (전부 목업 전환율%, plan.md §3-3 그룹 기준) ──
+  function cohortBarChart(canvasId, labels, values, colors) {
+    new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6, barPercentage: 0.6 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw}%` } },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v + '%' } },
+        },
+      },
+    });
+  }
+
+  cohortBarChart('canvas-cohort-gender', ['여성', '남성'], [2.1, 1.6], ['#C94B7A', '#4f7cff']);
+  cohortBarChart('canvas-cohort-age', ['10대', '20대', '30대', '40대+'], [0.8, 2.4, 2.0, 1.1], '#7B52CC');
+  cohortBarChart('canvas-cohort-persona', ['언박싱', '굳은살', '악보의존', '방구석', '기타마스터'], [0.5, 1.2, 2.6, 1.8, 3.4], '#2E9E72');
+  cohortBarChart('canvas-cohort-peak', ['1회', '2~4회', '5~9회', '10회+'], [0.6, 1.4, 2.9, 4.7], '#E8C000');
+</script>
+
+</body>
+</html>
