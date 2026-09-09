@@ -227,6 +227,14 @@
     cursor: pointer;
   }
 
+  .db-paywall-table-wrap { overflow-x: auto; margin-top: 12px; flex: 1; }
+  .db-paywall-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .db-paywall-table th, .db-paywall-table td { padding: 8px 10px; text-align: right; white-space: nowrap; }
+  .db-paywall-table th:first-child, .db-paywall-table td:first-child { text-align: left; }
+  .db-paywall-table thead th { color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border); }
+  .db-paywall-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--gray-light); }
+  .db-paywall-empty { text-align: center; color: var(--text-muted); padding: 20px 0 !important; }
+
   /* 그리드 오버레이 — G키로 토글, 컬럼 정렬 디버그용 */
   .grid-overlay {
     display: none;
@@ -374,6 +382,28 @@
     <div class="db-chart-box" id="chart-paywall">
       <div class="db-chart-header">
         <h2 class="db-chart-title">페이월 전환 경로</h2>
+        <select class="db-chart-select" id="paywall-window">
+          <option value="all" selected>전체</option>
+          <option value="1d">최근 1일</option>
+          <option value="7d">최근 7일</option>
+          <option value="30d">최근 30일</option>
+        </select>
+      </div>
+      <div class="db-paywall-table-wrap">
+        <table class="db-paywall-table" id="paywall-table">
+          <thead>
+            <tr>
+              <th>경로</th>
+              <th>조회수</th>
+              <th>유니크유저</th>
+              <th>전환수</th>
+              <th>전환율</th>
+            </tr>
+          </thead>
+          <tbody id="paywall-table-body">
+            <tr><td colspan="5" class="db-paywall-empty">불러오는 중…</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -757,6 +787,47 @@
     buildSignupsChart();
   }
 
+  // ── 페이월 전환 경로 표 (paywall_path_window_summary, 구간별 정확집계) ──
+  async function loadPaywallPaths() {
+    const tbody = document.getElementById('paywall-table-body');
+    const { data: { session } } = await sbAuth.auth.getSession();
+    if (!session) return;
+
+    const windowKey = document.getElementById('paywall-window').value;
+    const url = `${SUPABASE_URL}/rest/v1/paywall_path_window_summary?select=*&window_key=eq.${windowKey}&order=distinct_users.desc&limit=20`;
+    const resp = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      await sbAuth.auth.signOut();
+      showGate('이 계정에는 조회 권한이 없습니다.');
+      return;
+    }
+    if (!resp.ok) {
+      tbody.innerHTML = '<tr><td colspan="5" class="db-paywall-empty">불러오지 못함</td></tr>';
+      return;
+    }
+    const rows = await resp.json();
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="db-paywall-empty">데이터 없음</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((r) => {
+      const pct = r.distinct_users > 0 ? (r.converted_users / r.distinct_users * 100).toFixed(2) : '0.00';
+      return `<tr>
+        <td>${r.path}</td>
+        <td>${r.views}</td>
+        <td>${r.distinct_users}</td>
+        <td>${r.converted_users}</td>
+        <td>${pct}%</td>
+      </tr>`;
+    }).join('');
+  }
+  document.getElementById('paywall-window').addEventListener('change', loadPaywallPaths);
+
   // ── 로그인 게이트 ──
   const gateEl = document.getElementById('db-gate');
   const gateErr = document.getElementById('db-gate-err');
@@ -773,6 +844,7 @@
   function startDashboard() {
     gateEl.hidden = true;
     loadDashboard();
+    loadPaywallPaths();
     if (!pollTimer) {
       // 1분마다 재요청 — DB cron(5분)이랑 페이지 폴링 주기가 안 맞물려 생기는 오프셋을 줄임
       pollTimer = setInterval(loadDashboard, 60 * 1000);
