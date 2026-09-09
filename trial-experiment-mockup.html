@@ -84,7 +84,7 @@
   .db-chart-body canvas { width: 100% !important; height: 100% !important; }
 
   /* 카드1: 메인 퍼널 */
-  #card-funnel .db-chart-body { aspect-ratio: 2.4 / 1; margin-top: 16px; }
+  #card-funnel .db-chart-body { aspect-ratio: 1.9 / 1; margin-top: 16px; }
 
   /* 카드2: 진행 카운터 */
   .progress-count-row { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 10px; }
@@ -221,7 +221,6 @@
       }],
     },
     options: {
-      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -236,8 +235,8 @@
         },
       },
       scales: {
-        x: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v.toLocaleString() } },
-        y: { grid: { display: false } },
+        x: { grid: { display: false } },
+        y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v.toLocaleString() } },
       },
     },
   });
