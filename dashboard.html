@@ -236,8 +236,9 @@
   .db-paywall-sortable { cursor: pointer; user-select: none; }
   .db-paywall-sortable:hover { color: var(--text-primary); }
   .db-paywall-sort-arrow { display: inline-flex; vertical-align: -3px; margin-left: 3px; color: var(--text-muted); }
-  .db-paywall-sort-arrow svg { width: 16px; height: 16px; stroke-width: 2.5px; }
+  .db-paywall-sort-arrow svg { width: 16px; height: 16px; stroke-width: 2.5px; transition: transform 0.15s ease; }
   .db-paywall-sortable.db-paywall-sort-active .db-paywall-sort-arrow { color: var(--blue); }
+  .db-paywall-sortable.db-paywall-sort-asc .db-paywall-sort-arrow svg { transform: rotate(180deg); }
   .db-paywall-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--gray-light); }
   .db-paywall-empty { text-align: center; color: var(--text-muted); padding: 20px 0 !important; }
 
@@ -400,10 +401,10 @@
           <thead>
             <tr>
               <th>경로</th>
-              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
-              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
-              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
-              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down" class="db-paywall-arrow-down"></i><i data-lucide="chevron-up" class="db-paywall-arrow-up" hidden></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="views">조회수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down"></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="distinct_users">유니크유저<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down"></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="converted_users">전환수<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down"></i></span></th>
+              <th class="db-paywall-sortable" data-sort-key="pct">전환율<span class="db-paywall-sort-arrow"><i data-lucide="chevron-down"></i></span></th>
             </tr>
           </thead>
           <tbody id="paywall-table-body">
@@ -874,8 +875,7 @@
       const active = _paywallSort.key === key && _paywallSort.dir;
       const isAsc = active && _paywallSort.dir === 'asc';
       th.classList.toggle('db-paywall-sort-active', !!active);
-      th.querySelector('.db-paywall-arrow-down').hidden = isAsc;
-      th.querySelector('.db-paywall-arrow-up').hidden = !isAsc;
+      th.classList.toggle('db-paywall-sort-asc', isAsc);
     });
   }
 
