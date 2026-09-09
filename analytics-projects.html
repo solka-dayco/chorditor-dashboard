@@ -22,6 +22,7 @@
     --text-muted: #a09b95;
     --accent: #e03c31;
     --blue: #4f7cff;
+    --brand: #1a1a1a;
 
     --grid-margin: 20px;
     --grid-gutter: 16px;
@@ -280,6 +281,43 @@
     font-size: 13px; padding: 6px 4px; cursor: pointer;
   }
   .fn-chart-note { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+
+  /* ── 7일 체험 실험 프로젝트: 목업(trial-experiment-mockup.html)에서 이식 ──
+     nested box-shadow 대신 기존 fn-kpi-tile 패턴처럼 플랫 패널(테두리)로 통일 */
+  .fn-trial-grid { display: grid; grid-template-columns: repeat(var(--grid-cols), 1fr); gap: var(--grid-gutter); }
+  .fn-trial-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    grid-column: span var(--grid-cols);
+  }
+  @media (min-width: 1600px) {
+    .fn-trial-panel--half { grid-column: span 6; }
+  }
+  .fn-trial-panel-title { font-size: 14px; font-weight: 700; margin: 0; }
+  .fn-trial-panel-sub { font-size: 11px; color: var(--text-muted); margin: 2px 0 0; }
+
+  .fn-trial-progress-row { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 8px; }
+  .fn-trial-progress-num { font-size: 34px; font-weight: 700; }
+  .fn-trial-progress-goal { font-size: 16px; color: var(--text-muted); }
+  .fn-trial-progress-track { width: 100%; height: 12px; background: var(--gray-light); border-radius: 999px; overflow: hidden; }
+  .fn-trial-progress-fill { height: 100%; background: var(--brand); border-radius: 999px; transition: width 0.6s ease; }
+  .fn-trial-progress-note { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
+
+  #fn-trial-progress-trend-wrap { flex: 1; min-height: 140px; margin-top: 12px; }
+  #fn-trial-funnel-wrap { flex: 1; min-height: 200px; margin-top: 12px; }
+
+  .fn-trial-cohort-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
+  @media (max-width: 1199px) { .fn-trial-cohort-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 599px) { .fn-trial-cohort-grid { grid-template-columns: 1fr; } }
+  .fn-trial-cohort-sub { display: flex; flex-direction: column; }
+  .fn-trial-cohort-sub-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 0 0 6px; }
+  .fn-trial-cohort-sub .fn-trial-chart-body { aspect-ratio: 1.9 / 1; }
+  .fn-trial-chart-body { position: relative; }
+  .fn-trial-chart-body canvas { width: 100% !important; height: 100% !important; }
 </style>
 </head>
 <body>
@@ -510,10 +548,212 @@
     });
   }
 
+  // ── 7일 체험 만료 후 전환율 실험 (docs/trial-experiment-dashboard-plan.md 기반, 목업 포팅)
+  // ⚠️ 전부 하드코딩된 목업 데이터 — 실제 쿼리/DB 연결 전까지는 이 값 그대로 표시됨.
+  function fnRenderTrialExperiment(bodyEl) {
+    const FUNNEL_LABELS = ['지급', '재접속', '알림노출', '결제(알림경유)'];
+    const FUNNEL_VALUES = [7000, 5320, 3980, 62];
+    const FUNNEL_PCTS = FUNNEL_VALUES.map((v) => +(v / FUNNEL_VALUES[0] * 100).toFixed(1));
+    const FUNNEL_COLORS = ['rgba(26,26,26,0.25)', 'rgba(26,26,26,0.5)', 'rgba(26,26,26,0.75)', '#1a1a1a'];
+
+    const PROGRESS_CURRENT = 118;
+    const PROGRESS_GOAL = 300;
+
+    bodyEl.innerHTML = `
+      <div class="fn-trial-grid">
+        <div class="fn-trial-panel fn-trial-panel--half">
+          <h3 class="fn-trial-panel-title">실험 진행률</h3>
+          <p class="fn-trial-panel-sub">만료자 수 / ${PROGRESS_GOAL} (정지조건)</p>
+          <div class="fn-trial-progress-row">
+            <span class="fn-trial-progress-num">${PROGRESS_CURRENT}</span>
+            <span class="fn-trial-progress-goal">/ ${PROGRESS_GOAL}</span>
+          </div>
+          <div class="fn-trial-progress-track"><div class="fn-trial-progress-fill" id="fn-trial-progress-fill" style="width:0%"></div></div>
+          <p class="fn-trial-progress-note">8일차부터 만료자 발생 시작</p>
+          <div class="fn-trial-chart-body" id="fn-trial-progress-trend-wrap"><canvas id="fn-trial-progress-trend"></canvas></div>
+        </div>
+
+        <div class="fn-trial-panel fn-trial-panel--half">
+          <h3 class="fn-trial-panel-title">체험판 전환 퍼널</h3>
+          <p class="fn-trial-panel-sub">지급 → 재접속 → 알림노출 → 결제(알림경유)</p>
+          <div class="fn-trial-chart-body" id="fn-trial-funnel-wrap"></div>
+        </div>
+
+        <div class="fn-trial-panel">
+          <h3 class="fn-trial-panel-title">코호트별 전환율 비교</h3>
+          <p class="fn-trial-panel-sub">그룹별 알림경유 결제 전환율(%) — 분모=그룹 내 지급인원, 분자=그룹 내 결제인원</p>
+          <div class="fn-trial-cohort-grid">
+            <div class="fn-trial-cohort-sub">
+              <p class="fn-trial-cohort-sub-title">성별 × 나이대</p>
+              <div class="fn-trial-chart-body"><canvas id="fn-trial-cohort-demo"></canvas></div>
+            </div>
+            <div class="fn-trial-cohort-sub">
+              <p class="fn-trial-cohort-sub-title">페르소나</p>
+              <div class="fn-trial-chart-body"><canvas id="fn-trial-cohort-persona"></canvas></div>
+            </div>
+            <div class="fn-trial-cohort-sub">
+              <p class="fn-trial-cohort-sub-title">피크소진 횟수구간</p>
+              <div class="fn-trial-chart-body"><canvas id="fn-trial-cohort-peak"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('fn-trial-progress-fill').style.width = (PROGRESS_CURRENT / PROGRESS_GOAL * 100) + '%';
+
+    // ── 퍼널: SVG 사다리꼴(직사각형, 로그스케일 너비) — 라벨은 왼쪽 고정, 막대는 오른쪽 레인 중앙정렬
+    function buildFunnelSVG() {
+      const wrap = document.getElementById('fn-trial-funnel-wrap');
+      const n = FUNNEL_VALUES.length;
+      const rect = wrap.getBoundingClientRect();
+      const W = rect.width, bandH = rect.height / n, H = rect.height;
+      const textX = 0;
+      const barLaneStart = W * 0.46;
+      const barLaneW = W - barLaneStart;
+
+      const logs = FUNNEL_VALUES.map((v) => Math.log10(v));
+      const maxLog = Math.max(...logs), minLog = Math.min(...logs);
+      const minW = barLaneW * 0.18, maxW = barLaneW * 0.96;
+      const widthFor = (v) => {
+        if (maxLog === minLog) return maxW;
+        const t = (Math.log10(v) - minLog) / (maxLog - minLog);
+        return minW + t * (maxW - minW);
+      };
+      const widths = FUNNEL_VALUES.map(widthFor);
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif">`;
+      FUNNEL_LABELS.forEach((label, i) => {
+        const barW = widths[i];
+        const barX = barLaneStart + (barLaneW - barW) / 2;
+        const y0 = i * bandH;
+        const y1 = y0 + bandH;
+        const points = `${barX},${y0} ${barX + barW},${y0} ${barX + barW},${y1} ${barX},${y1}`;
+        const midY = y0 + bandH / 2;
+        svg += `<polygon points="${points}" fill="${FUNNEL_COLORS[i]}" />`;
+        svg += `<text x="${textX}" y="${midY - 4}" text-anchor="start" font-size="12" font-weight="600" fill="var(--text-secondary)">${label}</text>`;
+        svg += `<text x="${textX}" y="${midY + 18}" text-anchor="start" font-size="20" font-weight="300" fill="var(--text-primary)">${FUNNEL_VALUES[i].toLocaleString()}<tspan font-size="11" font-weight="400" dx="4" fill="var(--text-secondary)">${FUNNEL_PCTS[i]}%</tspan></text>`;
+      });
+      svg += '</svg>';
+      wrap.innerHTML = svg;
+    }
+    buildFunnelSVG();
+    window.addEventListener('resize', buildFunnelSVG);
+
+    // ── 진행률 시계열: 지연출발 곡선 + D+8 만료시작 점선
+    const trendDays = Array.from({ length: 30 }, (_, i) => `D+${i + 1}`);
+    const trendValues = trendDays.map((_, i) => {
+      const day = i + 1;
+      if (day < 8) return 0;
+      return Math.round(PROGRESS_CURRENT * Math.min(1, (day - 7) / 23) ** 1.3);
+    });
+    new Chart(document.getElementById('fn-trial-progress-trend'), {
+      type: 'line',
+      data: {
+        labels: trendDays,
+        datasets: [{
+          data: trendValues,
+          borderColor: '#1a1a1a',
+          backgroundColor: 'rgba(26,26,26,0.06)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+          y: { grid: { color: '#ECECEA' } },
+        },
+      },
+      plugins: [{
+        id: 'startLine',
+        afterDraw(chart) {
+          const idx = trendDays.indexOf('D+8');
+          if (idx < 0) return;
+          const { ctx, chartArea, scales } = chart;
+          const x = scales.x.getPixelForValue(idx);
+          ctx.save();
+          ctx.strokeStyle = '#e03c31';
+          ctx.setLineDash([4, 3]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, chartArea.top);
+          ctx.lineTo(x, chartArea.bottom);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        },
+      }],
+    });
+
+    // ── 코호트 비교 (목업 수치)
+    function cohortBarChart(canvasId, labels, values, counts, colors) {
+      new Chart(document.getElementById(canvasId), {
+        type: 'bar',
+        data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 0, barPercentage: 0.6 }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => `${ctx.raw}% (${counts[ctx.dataIndex]}명)` } },
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v + '%' } },
+          },
+        },
+      });
+    }
+
+    const AGE_LABELS = ['10대', '20대', '30대', '40대', '50대', '60대+'];
+    const DEMO_FEMALE_PCT = [0.9, 2.6, 2.2, 1.7, 2.1, 1.5];
+    const DEMO_FEMALE_CNT = [2, 29, 20, 11, 9, 3];
+    const DEMO_MALE_PCT = [0.7, 2.2, 1.8, 1.3, 1.7, 1.1];
+    const DEMO_MALE_CNT = [1, 24, 16, 8, 8, 2];
+    new Chart(document.getElementById('fn-trial-cohort-demo'), {
+      type: 'bar',
+      data: {
+        labels: AGE_LABELS,
+        datasets: [
+          { label: '여성', data: DEMO_FEMALE_PCT, backgroundColor: '#C94B7A', borderRadius: 0, barPercentage: 0.7 },
+          { label: '남성', data: DEMO_MALE_PCT, backgroundColor: '#4f7cff', borderRadius: 0, barPercentage: 0.7 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const cnt = ctx.datasetIndex === 0 ? DEMO_FEMALE_CNT[ctx.dataIndex] : DEMO_MALE_CNT[ctx.dataIndex];
+                return `${ctx.dataset.label} ${ctx.raw}% (${cnt}명)`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: '#ECECEA' }, ticks: { callback: (v) => v + '%' } },
+        },
+      },
+    });
+
+    cohortBarChart('fn-trial-cohort-persona', ['언박싱', '굳은살', '악보의존', '방구석', '기타마스터'], [0.5, 1.2, 2.6, 1.8, 3.4], [11, 22, 36, 16, 24], '#4f7cff');
+    cohortBarChart('fn-trial-cohort-peak', ['1회', '2~4회', '5~9회', '10회+'], [0.6, 1.4, 2.9, 4.7], [5, 34, 32, 19], '#E8C000');
+  }
+
   // ── 섹션 정의 — 여기 배열에 항목을 추가/삭제하는 게 곧 "프로젝트 추가/삭제".
   // render가 없으면 자리표시 문구만 보여준다(신규 섹션 초안용).
   const FN_SECTIONS = [
     { id: 'mission-funnel', title: '데일리미션 분석', kpiMode: true, render: fnRenderMissionFunnelKPI },
+    { id: 'trial-experiment', title: '7일 체험 만료 후 전환율 실험', kpiMode: true, render: fnRenderTrialExperiment },
   ];
 
   let fnActiveId = FN_SECTIONS[0]?.id ?? null;
