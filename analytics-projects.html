@@ -80,68 +80,24 @@
     gap: var(--grid-gutter);
   }
 
-  .fn-project-create {
-    grid-column: span var(--grid-cols);
-    display: flex;
-    gap: 10px;
-  }
-  .fn-project-input {
-    flex: 1;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--text-primary);
-    background: var(--surface);
-    box-shadow: var(--db-card-shadow);
-    border: none;
-    border-radius: 12px;
-    padding: 12px 16px;
-  }
-  .fn-project-add-btn {
-    font-family: inherit;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--bg);
-    background: var(--text-primary);
-    border: none;
-    border-radius: 12px;
-    padding: 12px 20px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .fn-project-list {
+  /* 섹션은 코드(FN_SECTIONS)에서 정의 — 사용자가 타이틀 입력해 만들던 방식 폐기 */
+  .fn-section-list {
     grid-column: span var(--grid-cols);
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
   }
-  .fn-project-chip {
+  .fn-section-chip {
     display: flex;
     align-items: center;
-    gap: 8px;
     background: var(--surface);
     box-shadow: var(--db-card-shadow);
     border-radius: 999px;
-    padding: 8px 8px 8px 16px;
+    padding: 8px 16px;
     font-size: 14px;
     cursor: pointer;
   }
-  .fn-project-chip.active { background: var(--text-primary); color: var(--bg); }
-  .fn-project-chip-del {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--gray-light);
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .fn-project-chip.active .fn-project-chip-del { background: rgba(255,255,255,0.15); color: var(--bg); }
-  .fn-empty-hint { grid-column: span var(--grid-cols); color: var(--text-muted); font-size: 14px; }
+  .fn-section-chip.active { background: var(--text-primary); color: var(--bg); }
 
   .fn-content {
     grid-column: span var(--grid-cols);
@@ -349,15 +305,10 @@
   </nav>
 
   <div class="db-grid">
-    <div class="fn-project-create">
-      <input type="text" class="fn-project-input" id="fn-project-input" placeholder="새 프로젝트 이름 (예: 데일리미션 퍼널)" />
-      <button class="fn-project-add-btn" id="fn-project-add-btn">+ 추가</button>
-    </div>
-    <div class="fn-project-list" id="fn-project-list"></div>
-    <p class="fn-empty-hint" id="fn-empty-hint">아직 만든 프로젝트가 없음 — 위에서 이름 입력하고 추가해줘.</p>
+    <div class="fn-section-list" id="fn-section-list"></div>
     <div class="fn-content" id="fn-content">
       <h2 class="fn-content-title" id="fn-content-title"></h2>
-      <div class="fn-content-body" id="fn-content-body">차트/테이블 자리 (자리만 잡음)</div>
+      <div class="fn-content-body" id="fn-content-body"></div>
     </div>
   </div>
 </div>
@@ -367,24 +318,6 @@
   const SUPABASE_URL = 'https://jbvkygeksohlysyvaoab.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impidmt5Z2Vrc29obHlzeXZhb2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTk5NjgsImV4cCI6MjA5MTk3NTk2OH0.6RSgChy0Yq0H2TJpZPSoMKQ2V-OYfR0XzE1aJBBZkXI';
   const sbAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  // 프로젝트 타이틀 생성/목록 — localStorage에 저장(이 브라우저 전용)
-  const FN_STORAGE_KEY = 'chorditor_funnel_projects';
-
-  function fnLoadProjects() {
-    try { return JSON.parse(localStorage.getItem(FN_STORAGE_KEY)) || []; }
-    catch (_) { return []; }
-  }
-  function fnSaveProjects(list) {
-    try { localStorage.setItem(FN_STORAGE_KEY, JSON.stringify(list)); } catch (_) {}
-  }
-
-  let fnProjects = fnLoadProjects();
-  let fnActiveId = fnProjects[0]?.id ?? null;
-
-  // 프로젝트 칩 제목 문자열로 분기 — README/dashboard_public_access_control 메모리 참고 패턴.
-  // 이 칩 제목일 때만 데일리미션 KPI 패널을 보여준다.
-  const FN_MISSION_FUNNEL_TITLE = '데일리미션 분석 프로젝트';
 
   // ── 데일리미션 KPI: 오늘=실시간 RPC, 과거=mission_funnel_history 테이블 ──
   let fnFunnelChart = null;
@@ -577,64 +510,41 @@
     });
   }
 
-  function fnRenderProjects() {
-    const listEl = document.getElementById('fn-project-list');
-    const hintEl = document.getElementById('fn-empty-hint');
+  // ── 섹션 정의 — 여기 배열에 항목을 추가/삭제하는 게 곧 "프로젝트 추가/삭제".
+  // render가 없으면 자리표시 문구만 보여준다(신규 섹션 초안용).
+  const FN_SECTIONS = [
+    { id: 'mission-funnel', title: '데일리미션 분석', kpiMode: true, render: fnRenderMissionFunnelKPI },
+  ];
+
+  let fnActiveId = FN_SECTIONS[0]?.id ?? null;
+
+  function fnRenderSections() {
+    const listEl = document.getElementById('fn-section-list');
     const contentEl = document.getElementById('fn-content');
     const bodyEl = document.getElementById('fn-content-body');
-    hintEl.style.display = fnProjects.length ? 'none' : 'block';
 
-    listEl.innerHTML = fnProjects.map((p) => `
-      <span class="fn-project-chip${p.id === fnActiveId ? ' active' : ''}" data-id="${p.id}">
-        ${p.title}
-        <span class="fn-project-chip-del" data-del="${p.id}">×</span>
-      </span>
+    listEl.innerHTML = FN_SECTIONS.map((s) => `
+      <span class="fn-section-chip${s.id === fnActiveId ? ' active' : ''}" data-id="${s.id}">${s.title}</span>
     `).join('');
 
-    const active = fnProjects.find((p) => p.id === fnActiveId);
+    const active = FN_SECTIONS.find((s) => s.id === fnActiveId);
     contentEl.classList.toggle('active', !!active);
     if (!active) return;
 
     document.getElementById('fn-content-title').textContent = active.title;
-    const isMissionFunnel = active.title === FN_MISSION_FUNNEL_TITLE;
-    bodyEl.classList.toggle('fn-kpi-mode', isMissionFunnel);
-    if (isMissionFunnel) {
-      fnRenderMissionFunnelKPI(bodyEl);
+    bodyEl.classList.toggle('fn-kpi-mode', !!active.kpiMode);
+    if (active.render) {
+      active.render(bodyEl);
     } else {
       bodyEl.textContent = '차트/테이블 자리 (자리만 잡음)';
     }
   }
 
-  function fnAddProject() {
-    const input = document.getElementById('fn-project-input');
-    const title = input.value.trim();
-    if (!title) return;
-    const project = { id: Date.now().toString(36), title };
-    fnProjects.push(project);
-    fnActiveId = project.id;
-    fnSaveProjects(fnProjects);
-    fnRenderProjects();
-    input.value = '';
-  }
-
-  document.getElementById('fn-project-add-btn').addEventListener('click', fnAddProject);
-  document.getElementById('fn-project-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') fnAddProject();
-  });
-
-  document.getElementById('fn-project-list').addEventListener('click', (e) => {
-    const delId = e.target.dataset.del;
-    if (delId) {
-      fnProjects = fnProjects.filter((p) => p.id !== delId);
-      if (fnActiveId === delId) fnActiveId = fnProjects[0]?.id ?? null;
-      fnSaveProjects(fnProjects);
-      fnRenderProjects();
-      return;
-    }
-    const chip = e.target.closest('.fn-project-chip');
+  document.getElementById('fn-section-list').addEventListener('click', (e) => {
+    const chip = e.target.closest('.fn-section-chip');
     if (chip) {
       fnActiveId = chip.dataset.id;
-      fnRenderProjects();
+      fnRenderSections();
     }
   });
 
@@ -652,7 +562,7 @@
   async function startProjectsPage() {
     gateEl.hidden = true;
     // 로그인 실패(RLS 차단) 여부는 데이터 항목을 열 때 fnFetchAuthedJson이 던지는 에러로 확인됨.
-    fnRenderProjects();
+    fnRenderSections();
   }
 
   loginBtn.addEventListener('click', async () => {
