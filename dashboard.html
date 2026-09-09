@@ -788,6 +788,21 @@
   }
 
   // ── 페이월 전환 경로 표 (paywall_path_window_summary, 구간별 정확집계) ──
+  const PAYWALL_PATH_LABELS = {
+    'profile': '프로필 (자발)',
+    'note_limit': '노트 한도 초과',
+    'note_save': '노트 저장 한도',
+    'note_locked': '잠긴 노트 열람',
+    'image_transparent': '이미지 투명배경',
+    'image_scale': '이미지 배율 한도',
+    'promo_expiry_notice': '프로모션 만료 알림',
+    'peak_buffer (quiz)': '피크 부족 · 코드맞추기',
+    'peak_buffer (scale)': '피크 부족 · 스케일훈련',
+    'peak_buffer (strum)': '피크 부족 · 주법훈련',
+    'peak_buffer (progression)': '피크 부족 · 코드진행',
+    'peak_buffer (chord_combo)': '피크 부족 · 코드조합',
+    'peak_buffer (기타)': '피크 부족 · 기타',
+  };
   async function loadPaywallPaths() {
     const tbody = document.getElementById('paywall-table-body');
     const { data: { session } } = await sbAuth.auth.getSession();
@@ -818,7 +833,7 @@
     tbody.innerHTML = rows.map((r) => {
       const pct = r.distinct_users > 0 ? (r.converted_users / r.distinct_users * 100).toFixed(2) : '0.00';
       return `<tr>
-        <td>${r.path}</td>
+        <td>${PAYWALL_PATH_LABELS[r.path] || r.path}</td>
         <td>${r.views}</td>
         <td>${r.distinct_users}</td>
         <td>${r.converted_users}</td>
