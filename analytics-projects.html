@@ -354,6 +354,8 @@
 
   #fn-trial-funnel-wrap { flex: 1; min-height: 200px; margin-top: 12px; }
 
+  .fn-trial-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
   .fn-trial-cohort-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 12px; }
   @media (max-width: 599px) { .fn-trial-cohort-grid { grid-template-columns: 1fr; } }
   .fn-trial-cohort-sub { display: flex; flex-direction: column; }
@@ -653,6 +655,27 @@
     fnRenderTrialCharts(bodyEl, fnTrialData);
   }
 
+  // 수동 스냅샷 갱신 — rpc/refresh_trial_experiment_funnel_now (admin uid 가드 내장, 'ok'|'forbidden' 반환)
+  async function fnRefreshTrialSnapshot(e) {
+    const btn = e.currentTarget;
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '갱신 중…';
+    try {
+      const { data: { session } } = await sbAuth.auth.getSession();
+      if (!session) throw new Error('세션 없음');
+      const out = await fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/refresh_trial_experiment_funnel_now`, session, {
+        method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' },
+      });
+      if (out !== 'ok') throw new Error(String(out));
+      await fnRenderTrialExperiment(document.getElementById('fn-content-body')); // 새 데이터로 카드 재조회·재렌더
+    } catch (err) {
+      alert('갱신 실패: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
   // 마크업 + 차트 렌더만 — 네트워크 없음. 테마 토글 시 이것만 다시 부름.
   function fnRenderTrialCharts(bodyEl, dataObj) {
     fnTrialCharts.forEach((c) => c.destroy());
@@ -671,6 +694,9 @@
     const FUNNEL_COLORS = [fnCssVar('--funnel-1'), fnCssVar('--funnel-2'), fnCssVar('--funnel-3'), fnCssVar('--funnel-4')];
 
     bodyEl.innerHTML = `
+      <div class="fn-trial-toolbar">
+        <button type="button" class="db-theme-toggle" id="fn-trial-refresh">↻ 스냅샷 갱신</button>
+      </div>
       <div class="fn-trial-grid">
         <div class="fn-trial-panel fn-trial-panel--half">
           <h3 class="fn-trial-panel-title">실험 진행률</h3>
@@ -716,6 +742,8 @@
 
     document.getElementById('fn-trial-progress-fill').style.width =
       Math.min(100, PROGRESS_GOAL > 0 ? progress / PROGRESS_GOAL * 100 : 0) + '%';
+
+    document.getElementById('fn-trial-refresh').addEventListener('click', fnRefreshTrialSnapshot);
 
     // ── 퍼널 SVG: 로그스케일 너비(값 0이어도 안 깨지게 clamp), 라벨 좌측고정 / 막대 우측레인 중앙정렬 ──
     function buildFunnelSVG() {
