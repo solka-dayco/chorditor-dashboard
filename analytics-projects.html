@@ -640,7 +640,8 @@
       ]);
       fnTrialData = { day, rows, progress: (typeof progress === 'number' ? progress : 0) };
     } catch (e) {
-      if ([400, 401, 403].includes(e.status)) {
+      // 401/403만 인증실패로 처리(400은 미배포·쿼리오류일 수 있어 실제 메시지를 보여줌)
+      if ([401, 403].includes(e.status)) {
         await sbAuth.auth.signOut();
         showGate('이 계정에는 조회 권한이 없습니다.');
         return;
