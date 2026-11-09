@@ -276,6 +276,66 @@
   .db-paywall-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--gray-light); }
   .db-paywall-empty { text-align: center; color: var(--text-muted); padding: 20px 0 !important; }
 
+  /* ── 유저 구성 섹션 ── */
+  .db-section-head {
+    grid-column: span var(--grid-cols);
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .db-section-title { font-size: 18px; font-weight: 700; margin: 0; }
+  .db-section-meta { font-size: 13px; color: var(--text-muted); }
+  .db-chart-box--full { grid-column: span var(--grid-cols); }
+  @media (min-width: 1600px) {
+    .db-chart-box--full { grid-column: span 12; }
+  }
+  @media (min-width: 1600px) {
+    .db-chart-body--wide { aspect-ratio: 2.4 / 1; } /* 전체폭 카드 — 골든비율이면 너무 높아짐 */
+  }
+  .db-chart-header-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .db-chart-header--wrap { flex-wrap: wrap; row-gap: 8px; }
+
+  /* 4분면 / 4칸 카드 */
+  .db-quad-wrap {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    grid-template-rows: 1fr 20px;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .db-quad-wrap--noaxis { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .db-quad-axis-y {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+  .db-quad-axis-x { grid-column: 2; font-size: 12px; color: var(--text-secondary); text-align: center; }
+  .db-quad-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+  }
+  .db-quad-cell {
+    background: var(--gray-light);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 96px;
+  }
+  .db-quad-name { font-size: 13px; color: var(--text-secondary); margin: 0; }
+  .db-quad-value { font-size: 24px; font-weight: 700; margin: 0; }
+  .db-quad-pct { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .db-quad-foot { font-size: 12px; color: var(--text-muted); margin: 12px 0 0; }
+
   /* 그리드 오버레이 — G키로 토글, 컬럼 정렬 디버그용 */
   .grid-overlay {
     display: none;
@@ -447,6 +507,55 @@
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- ── 유저 구성 (rpc/dashboard_user_segments) ── -->
+    <div class="db-section-head">
+      <h2 class="db-section-title">유저 구성</h2>
+      <span class="db-section-meta" id="seg-meta">불러오는 중…</span>
+    </div>
+
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">성비</h2></div>
+      <div class="db-chart-body"><canvas id="canvas-seg-gender"></canvas></div>
+    </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">연령대 분포</h2></div>
+      <div class="db-chart-body"><canvas id="canvas-seg-age"></canvas></div>
+    </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">페르소나 분포</h2></div>
+      <div class="db-chart-body"><canvas id="canvas-seg-persona"></canvas></div>
+    </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">유저 성향 · 접속패턴</h2></div>
+      <div class="db-quad-wrap">
+        <div class="db-quad-axis-y">체류시간(중앙값) ↑ 기준 2.55분</div>
+        <div class="db-quad-grid" id="seg-engagement-grid"></div>
+        <div class="db-quad-axis-x">접속 빈도 → 기준 주 1.56회</div>
+      </div>
+      <p class="db-quad-foot" id="seg-engagement-foot"></p>
+    </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">유저 성향 · 활동패턴</h2></div>
+      <div class="db-quad-wrap db-quad-wrap--noaxis">
+        <div class="db-quad-grid" id="seg-pref-grid"></div>
+      </div>
+      <p class="db-quad-foot" id="seg-pref-foot"></p>
+    </div>
+    <div class="db-chart-box db-chart-box--full">
+      <div class="db-chart-header db-chart-header--wrap">
+        <h2 class="db-chart-title">항목 교차 비교</h2>
+        <div class="db-chart-header-controls">
+          <select class="db-chart-select" id="seg-x" aria-label="X축"></select>
+          <select class="db-chart-select" id="seg-y" aria-label="Y축(색 구분)"></select>
+          <select class="db-chart-select" id="seg-mode" aria-label="표시 방식">
+            <option value="count">인원수</option>
+            <option value="pct">비율(X축 항목 안에서)</option>
+          </select>
+        </div>
+      </div>
+      <div class="db-chart-body db-chart-body--wide"><canvas id="canvas-seg-cross"></canvas></div>
     </div>
   </div>
 </div>
@@ -945,6 +1054,276 @@
   });
   if (typeof lucide !== 'undefined') lucide.createIcons(); // 정렬 화살표(chevron) 아이콘 렌더
 
+  // ── 유저 구성 (rpc/dashboard_user_segments) ──
+  //    서버는 5개 항목 조합별 인원수만 돌려준다. 모든 차트는 이 행들을 브라우저에서 다시 묶어 그린다.
+  const SEG_UNKNOWN_COLOR = '#a09b95';
+  const SEG_PALETTE = ['#4f7cff', '#2E9E72', '#7B52CC', '#E8C000', '#C94B7A', '#E0332A'];
+  const SEG_DIMS = {
+    gender: {
+      label: '성별',
+      order: ['male', 'female'],
+      names: { male: '남', female: '여' },
+      key: (r) => r.gender || '_unknown',
+      unknown: { _unknown: '미상' },
+    },
+    age: {
+      label: '연령대',
+      order: ['10', '20', '30', '40', '50', '60'],
+      names: { '60': '60대 이상' },
+      key: (r) => r.age_band || '_unknown',
+      unknown: { _unknown: '미상' },
+    },
+    persona: {
+      label: '페르소나',
+      order: ['unboxing', 'beginner', 'sheet_reader', 'home_master', 'guitar_master'],
+      names: { unboxing: '언박싱 1일차', beginner: '굳은살 비기너', sheet_reader: '악보의존자', home_master: '방구석 기타마스터', guitar_master: '기타마스터' },
+      key: (r) => (!r.has_profile ? '_uncomputed' : (r.persona || '_unknown')),
+      unknown: { _unknown: '미상', _uncomputed: '미계산' },
+    },
+    engagement: {
+      label: '접속패턴',
+      order: ['heavy_user', 'habitual', 'immersive', 'light_user'],
+      names: { heavy_user: '헤비유저', habitual: '습관형', immersive: '몰입형', light_user: '라이트유저' },
+      key: (r) => (!r.has_profile ? '_uncomputed' : (!r.engagement || r.engagement === 'insufficient_data' ? '_insufficient' : r.engagement)),
+      unknown: { _insufficient: '데이터부족', _uncomputed: '미계산' },
+    },
+    pref: {
+      label: '활동패턴',
+      order: ['comping', 'soloing', 'harmony', 'toolkit'],
+      names: { comping: '반주', soloing: '솔로', harmony: '화성학', toolkit: '도구' },
+      key: (r) => (!r.has_profile ? '_uncomputed' : (r.pref || '_insufficient')),
+      unknown: { _insufficient: '데이터부족', _uncomputed: '미계산' },
+    },
+  };
+
+  let _segRows = [];
+  let _segComputedAt = null;
+  const _segCharts = {};
+
+  function segName(dimKey, k) {
+    const d = SEG_DIMS[dimKey];
+    if (d.unknown[k]) return d.unknown[k];
+    if (d.names[k]) return d.names[k];
+    return dimKey === 'age' ? `${k}대` : k;
+  }
+
+  // 집계: { key: 인원수 }
+  function segCount(dimKey, rows) {
+    const out = {};
+    rows.forEach((r) => {
+      const k = SEG_DIMS[dimKey].key(r);
+      out[k] = (out[k] || 0) + r.users;
+    });
+    return out;
+  }
+
+  // 정해진 순서 → 그 외 원본값 → 미상류(마지막) 순으로 정렬한 key 목록
+  function segKeys(dimKey, counts) {
+    const d = SEG_DIMS[dimKey];
+    const present = Object.keys(counts);
+    const known = d.order.filter((k) => present.includes(k));
+    const unknownKeys = Object.keys(d.unknown).filter((k) => present.includes(k));
+    const others = present.filter((k) => !known.includes(k) && !unknownKeys.includes(k)).sort();
+    return [...known, ...others, ...unknownKeys];
+  }
+
+  function segColors(dimKey, keys) {
+    let i = 0;
+    let u = 0;
+    // 미상류가 2개(데이터부족·미계산)인 항목은 진한 회색 / 연한 회색으로 구분
+    return keys.map((k) => (SEG_DIMS[dimKey].unknown[k]
+      ? [SEG_UNKNOWN_COLOR, '#d9d4cc'][u++ % 2]
+      : SEG_PALETTE[i++ % SEG_PALETTE.length]));
+  }
+
+  function segTotal() { return _segRows.reduce((a, r) => a + r.users, 0); }
+  function segPct(n, total) { return total ? (n / total * 100).toFixed(1) : '0.0'; }
+
+  function segRenderGender() {
+    const counts = segCount('gender', _segRows);
+    const keys = segKeys('gender', counts);
+    const total = segTotal();
+    if (_segCharts.gender) _segCharts.gender.destroy();
+    _segCharts.gender = new Chart(document.getElementById('canvas-seg-gender'), {
+      type: 'doughnut',
+      data: {
+        labels: keys.map((k) => segName('gender', k)),
+        datasets: [{ data: keys.map((k) => counts[k]), backgroundColor: segColors('gender', keys), borderWidth: 0 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false, cutout: '60%',
+        plugins: {
+          legend: { position: 'right' },
+          tooltip: { callbacks: { label: (it) => `${it.label}: ${it.parsed.toLocaleString()}명 (${segPct(it.parsed, total)}%)` } },
+        },
+      },
+    });
+  }
+
+  function segRenderBar(dimKey, canvasId) {
+    const counts = segCount(dimKey, _segRows);
+    const keys = segKeys(dimKey, counts);
+    const total = segTotal();
+    if (_segCharts[dimKey]) _segCharts[dimKey].destroy();
+    _segCharts[dimKey] = new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: {
+        labels: keys.map((k) => segName(dimKey, k)),
+        datasets: [{ data: keys.map((k) => counts[k]), backgroundColor: keys.map((k) => (SEG_DIMS[dimKey].unknown[k] ? SEG_UNKNOWN_COLOR : '#4f7cff')), borderRadius: 4 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (it) => `${it.parsed.y.toLocaleString()}명 (${segPct(it.parsed.y, total)}%)` } },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: dbChartGridColor() }, title: { display: true, text: '명' } },
+        },
+      },
+    });
+  }
+
+  // 4칸 카드. layout = 화면 배치 순서(좌상, 우상, 좌하, 우하). 비율은 4칸 합계(분류된 유저) 대비.
+  function segRenderQuad(dimKey, gridId, footId, layout) {
+    const counts = segCount(dimKey, _segRows);
+    const classified = layout.reduce((a, k) => a + (counts[k] || 0), 0);
+    const total = segTotal();
+    document.getElementById(gridId).innerHTML = layout.map((k) => {
+      const n = counts[k] || 0;
+      return `<div class="db-quad-cell">
+        <p class="db-quad-name">${segName(dimKey, k)}</p>
+        <p class="db-quad-value">${n.toLocaleString()}명</p>
+        <p class="db-quad-pct">${segPct(n, classified)}%</p>
+      </div>`;
+    }).join('');
+    const extras = Object.keys(SEG_DIMS[dimKey].unknown)
+      .map((k) => `${SEG_DIMS[dimKey].unknown[k]} ${(counts[k] || 0).toLocaleString()}명`)
+      .join(' · ');
+    document.getElementById(footId).textContent =
+      `분류된 ${classified.toLocaleString()}명 기준 비율 (전체의 ${segPct(classified, total)}%) · 제외: ${extras}`;
+  }
+
+  function segRenderCross() {
+    const xDim = document.getElementById('seg-x').value;
+    const yDim = document.getElementById('seg-y').value;
+    const mode = document.getElementById('seg-mode').value;
+
+    const xCounts = segCount(xDim, _segRows);
+    const yCounts = segCount(yDim, _segRows);
+    const xKeys = segKeys(xDim, xCounts);
+    const yKeys = segKeys(yDim, yCounts);
+    const yColors = segColors(yDim, yKeys);
+
+    // cell[xKey][yKey] = 인원수
+    const cell = {};
+    _segRows.forEach((r) => {
+      const xk = SEG_DIMS[xDim].key(r);
+      const yk = SEG_DIMS[yDim].key(r);
+      cell[xk] = cell[xk] || {};
+      cell[xk][yk] = (cell[xk][yk] || 0) + r.users;
+    });
+
+    const datasets = yKeys.map((yk, i) => ({
+      label: segName(yDim, yk),
+      backgroundColor: yColors[i],
+      data: xKeys.map((xk) => {
+        const n = (cell[xk] && cell[xk][yk]) || 0;
+        return mode === 'pct' ? (xCounts[xk] ? n / xCounts[xk] * 100 : 0) : n;
+      }),
+      _raw: xKeys.map((xk) => (cell[xk] && cell[xk][yk]) || 0),
+    }));
+
+    if (_segCharts.cross) _segCharts.cross.destroy();
+    _segCharts.cross = new Chart(document.getElementById('canvas-seg-cross'), {
+      type: 'bar',
+      data: { labels: xKeys.map((k) => segName(xDim, k)), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10 } }, // 범례 클릭 = 그 항목 숨김/표시(Chart.js 기본)
+          tooltip: {
+            callbacks: {
+              title: (items) => `${SEG_DIMS[xDim].label}: ${items[0].label} (${xCounts[xKeys[items[0].dataIndex]].toLocaleString()}명)`,
+              label: (it) => {
+                const n = it.dataset._raw[it.dataIndex];
+                const xTotal = xCounts[xKeys[it.dataIndex]];
+                return `${it.dataset.label}: ${n.toLocaleString()}명 (${segPct(n, xTotal)}%)`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, title: { display: true, text: SEG_DIMS[xDim].label } },
+          y: {
+            stacked: true,
+            max: mode === 'pct' ? 100 : undefined,
+            grid: { color: dbChartGridColor() },
+            ticks: { callback: (v) => (mode === 'pct' ? v + '%' : v) },
+            title: { display: true, text: mode === 'pct' ? `${SEG_DIMS[yDim].label} 비율(%)` : '명' },
+          },
+        },
+      },
+    });
+  }
+
+  function segRenderAll() {
+    if (!_segRows.length) return;
+    segRenderGender();
+    segRenderBar('age', 'canvas-seg-age');
+    segRenderBar('persona', 'canvas-seg-persona');
+    // 접속패턴: 세로축 = 체류시간(위가 길다), 가로축 = 빈도(오른쪽이 잦다)
+    segRenderQuad('engagement', 'seg-engagement-grid', 'seg-engagement-foot', ['immersive', 'heavy_user', 'light_user', 'habitual']);
+    segRenderQuad('pref', 'seg-pref-grid', 'seg-pref-foot', ['comping', 'soloing', 'harmony', 'toolkit']);
+    segRenderCross();
+  }
+
+  // 교차 비교 축 선택지 채우기(기본: X=연령대, Y=성별)
+  (function segInitSelects() {
+    const opts = (axis) => Object.entries(SEG_DIMS).map(([k, d]) => `<option value="${k}">${axis}: ${d.label}</option>`).join('');
+    const xSel = document.getElementById('seg-x');
+    const ySel = document.getElementById('seg-y');
+    xSel.innerHTML = opts('X');
+    ySel.innerHTML = opts('Y');
+    xSel.value = 'age';
+    ySel.value = 'gender';
+    ['seg-x', 'seg-y', 'seg-mode'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', () => { if (_segRows.length) segRenderCross(); });
+    });
+  })();
+
+  async function loadUserSegments() {
+    const metaEl = document.getElementById('seg-meta');
+    const { data: { session } } = await sbAuth.auth.getSession();
+    if (!session) return;
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_user_segments`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      await sbAuth.auth.signOut();
+      showGate('이 계정에는 조회 권한이 없습니다.');
+      return;
+    }
+    if (!resp.ok) {
+      metaEl.textContent = '불러오지 못함';
+      return;
+    }
+    const json = await resp.json();
+    _segRows = json.rows || [];
+    _segComputedAt = json.computed_at;
+    const calc = _segComputedAt ? new Date(_segComputedAt).toLocaleDateString('sv-SE') : '없음';
+    metaEl.textContent = `가입자 ${segTotal().toLocaleString()}명(테스트 계정 제외) · 페르소나·패턴 계산일 ${calc}`;
+    segRenderAll();
+  }
+
   // ── 로그인 게이트 ──
   const gateEl = document.getElementById('db-gate');
   const gateErr = document.getElementById('db-gate-err');
@@ -962,6 +1341,7 @@
     gateEl.hidden = true;
     loadDashboard();
     loadPaywallPaths();
+    loadUserSegments(); // 1분 폴링 대상 아님 — 성향 값은 30일마다 바뀜
     if (!pollTimer) {
       // 1분마다 재요청 — DB cron(5분)이랑 페이지 폴링 주기가 안 맞물려 생기는 오프셋을 줄임
       pollTimer = setInterval(loadDashboard, 60 * 1000);
@@ -1006,6 +1386,7 @@
       // historyRows/_paywallRows는 이미 메모리에 있으니 재조회 없이 색만 다시 그림
       if (historyRows.length) { buildActiveChart(); buildSignupsChart(); }
       if (_paywallRows.length) renderPaywallTable();
+      segRenderAll();
     }
   }
   themeToggleBtn.addEventListener('click', () => {
