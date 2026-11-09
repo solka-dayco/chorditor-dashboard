@@ -543,6 +543,16 @@
       </div>
       <p class="db-quad-foot" id="seg-pref-foot"></p>
     </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">플랫폼 비율 (최근 30일 활성)</h2></div>
+      <div class="db-chart-body"><canvas id="canvas-seg-platform"></canvas></div>
+      <p class="db-quad-foot" id="seg-platform-foot"></p>
+    </div>
+    <div class="db-chart-box">
+      <div class="db-chart-header"><h2 class="db-chart-title">버전별 유저수 (최근 30일 활성)</h2></div>
+      <div class="db-chart-body"><canvas id="canvas-seg-version"></canvas></div>
+      <p class="db-quad-foot" id="seg-version-foot"></p>
+    </div>
     <div class="db-chart-box db-chart-box--full">
       <div class="db-chart-header db-chart-header--wrap">
         <h2 class="db-chart-title">항목 교차 비교</h2>
@@ -1094,6 +1104,30 @@
       key: (r) => (!r.has_profile ? '_uncomputed' : (r.pref || '_insufficient')),
       unknown: { _insufficient: '데이터부족', _uncomputed: '미계산' },
     },
+    platform: {
+      label: '플랫폼',
+      order: ['android', 'ios', 'web'],
+      names: { android: 'Android', ios: 'iOS', web: '웹' },
+      key: (r) => (!r.active_30d ? '_inactive' : (r.platform || '_unknown')),
+      unknown: { _unknown: '미상', _inactive: '30일 미접속' },
+    },
+    version: {
+      label: '앱 버전',
+      order: [],
+      names: {},
+      key: (r) => (!r.active_30d ? '_inactive' : (r.app_version || '_unknown')),
+      unknown: { _unknown: '미상', _inactive: '30일 미접속' },
+      // 버전은 정해진 순서가 없음 — 최신 버전이 앞(왼쪽)
+      sortOthers: (a, b) => {
+        const pa = a.split('.').map(Number);
+        const pb = b.split('.').map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const d = (pb[i] || 0) - (pa[i] || 0);
+          if (d) return d;
+        }
+        return 0;
+      },
+    },
   };
 
   let _segRows = [];
@@ -1123,7 +1157,7 @@
     const present = Object.keys(counts);
     const known = d.order.filter((k) => present.includes(k));
     const unknownKeys = Object.keys(d.unknown).filter((k) => present.includes(k));
-    const others = present.filter((k) => !known.includes(k) && !unknownKeys.includes(k)).sort();
+    const others = present.filter((k) => !known.includes(k) && !unknownKeys.includes(k)).sort(d.sortOthers);
     return [...known, ...others, ...unknownKeys];
   }
 
@@ -1139,16 +1173,17 @@
   function segTotal() { return _segRows.reduce((a, r) => a + r.users, 0); }
   function segPct(n, total) { return total ? (n / total * 100).toFixed(1) : '0.0'; }
 
-  function segRenderGender() {
-    const counts = segCount('gender', _segRows);
-    const keys = segKeys('gender', counts);
-    const total = segTotal();
-    if (_segCharts.gender) _segCharts.gender.destroy();
-    _segCharts.gender = new Chart(document.getElementById('canvas-seg-gender'), {
+  // exclude: 차트에서 빼는 key(예: '_inactive' — 비율 분모에서도 빠짐)
+  function segRenderDonut(dimKey, canvasId, exclude = []) {
+    const counts = segCount(dimKey, _segRows);
+    const keys = segKeys(dimKey, counts).filter((k) => !exclude.includes(k));
+    const total = keys.reduce((a, k) => a + counts[k], 0);
+    if (_segCharts[dimKey]) _segCharts[dimKey].destroy();
+    _segCharts[dimKey] = new Chart(document.getElementById(canvasId), {
       type: 'doughnut',
       data: {
-        labels: keys.map((k) => segName('gender', k)),
-        datasets: [{ data: keys.map((k) => counts[k]), backgroundColor: segColors('gender', keys), borderWidth: 0 }],
+        labels: keys.map((k) => segName(dimKey, k)),
+        datasets: [{ data: keys.map((k) => counts[k]), backgroundColor: segColors(dimKey, keys), borderWidth: 0 }],
       },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false, cutout: '60%',
@@ -1160,10 +1195,10 @@
     });
   }
 
-  function segRenderBar(dimKey, canvasId) {
+  function segRenderBar(dimKey, canvasId, exclude = []) {
     const counts = segCount(dimKey, _segRows);
-    const keys = segKeys(dimKey, counts);
-    const total = segTotal();
+    const keys = segKeys(dimKey, counts).filter((k) => !exclude.includes(k));
+    const total = keys.reduce((a, k) => a + counts[k], 0);
     if (_segCharts[dimKey]) _segCharts[dimKey].destroy();
     _segCharts[dimKey] = new Chart(document.getElementById(canvasId), {
       type: 'bar',
@@ -1271,9 +1306,17 @@
 
   function segRenderAll() {
     if (!_segRows.length) return;
-    segRenderGender();
+    segRenderDonut('gender', 'canvas-seg-gender');
     segRenderBar('age', 'canvas-seg-age');
     segRenderBar('persona', 'canvas-seg-persona');
+    // 플랫폼·버전: 최근 30일 활성 유저만(미접속은 차트에서 빼고 아래 한 줄로)
+    segRenderDonut('platform', 'canvas-seg-platform', ['_inactive']);
+    segRenderBar('version', 'canvas-seg-version', ['_inactive']);
+    const inactive = segCount('platform', _segRows)._inactive || 0;
+    const active = segTotal() - inactive;
+    const activeText = `30일 활성 ${active.toLocaleString()}명 기준 · 30일 미접속 ${inactive.toLocaleString()}명 제외`;
+    document.getElementById('seg-platform-foot').textContent = activeText;
+    document.getElementById('seg-version-foot').textContent = activeText;
     // 접속패턴: 세로축 = 체류시간(위가 길다), 가로축 = 빈도(오른쪽이 잦다)
     segRenderQuad('engagement', 'seg-engagement-grid', 'seg-engagement-foot', ['immersive', 'heavy_user', 'light_user', 'habitual']);
     segRenderQuad('pref', 'seg-pref-grid', 'seg-pref-foot', ['comping', 'soloing', 'harmony', 'toolkit']);
