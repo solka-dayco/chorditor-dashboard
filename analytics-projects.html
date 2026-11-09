@@ -354,7 +354,6 @@
 
   #fn-trial-funnel-wrap { flex: 1; min-height: 200px; margin-top: 12px; }
 
-  .fn-trial-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
   .fn-trial-cohort-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 12px; }
   @media (max-width: 599px) { .fn-trial-cohort-grid { grid-template-columns: 1fr; } }
@@ -610,15 +609,15 @@
     });
   }
 
-  // ── 7일 체험 만료 후 전환율 실험 ──────────────────────────────────
-  //   문서: docs/trial-experiment-dashboard-plan.md §3(3카드) / §7-2(진행카운터) / §7-3(스냅샷) / §8(모델)
-  //   데이터소스 2개:
-  //     1) trial_experiment_funnel_daily (일별 스냅샷) — 최신 day 행들
-  //        segment_type='overall' 1행 → 카드1 퍼널(claimed→reopened→notice_shown→converted)
-  //        segment_type IN (gender|age|persona|peak_bucket) → 카드3 코호트 4섹션
-  //        (백엔드가 gender/age를 따로 집계하므로 목업의 "성별×나이대 크로스"는 안 됨 — 각각 별도 차트)
-  //     2) rpc/trial_experiment_progress() → 만료자 수 int (진행카운터, 실시간)
-  //   인증: dashboard_public_access_control 패턴 — RLS admin uid만 통과, raw fetch + Bearer.
+  // ── 7일 체험 만료 후 전환율 실험 (종료, 2026-11-09 결과 고정) ──────────
+  //   문서: docs/trial-experiment-dashboard-plan.md §3(3카드) / §7-3(스냅샷) / §8(모델)
+  //   정지조건 300명 달성 = 2026-09-29 07:55 KST(300번째 클레임 9/22 07:55 + 7일).
+  //   결과 = 달성 직후 첫 크론 스냅샷(day=2026-09-30, 05:10 KST) 고정. 실시간 진행카운터·수동갱신 제거.
+  //   이후 스냅샷은 analytics_events 30일 롤링 삭제로 재접속·알림 수가 줄어들어 쓰면 안 됨.
+  //   숫자를 HTML에 박지 않는 이유: 페이지가 공개(GitHub Pages)라 RLS 보호 테이블에서 읽음.
+  //   결제(알림경유)는 전 기간 0명 — 실제 결과(측정 오류 아님, 사용자 확인). 그래서 코호트는 재접속률·알림노출률로 비교.
+  const TRIAL_RESULT_DAY = '2026-09-30';
+  const TRIAL_REACHED_AT = '2026-09-29 07:55 KST';
   let fnTrialData = null;   // { day, rows, progress } — 테마 토글 시 재조회 없이 재렌더용
   let fnTrialCharts = [];   // Chart 인스턴스 추적 → 재렌더 전 destroy
 
@@ -628,19 +627,11 @@
     if (!session) { bodyEl.textContent = '로그인이 필요합니다.'; return; }
 
     try {
-      const latest = await fnFetchAuthedJson(
-        `${SUPABASE_URL}/rest/v1/trial_experiment_funnel_daily?select=day&order=day.desc&limit=1`, session);
-      if (!latest.length) { bodyEl.textContent = '아직 집계된 데이터가 없습니다 (크론 첫 실행 전).'; return; }
-      const day = latest[0].day;
-      const [rows, progress] = await Promise.all([
-        fnFetchAuthedJson(
-          `${SUPABASE_URL}/rest/v1/trial_experiment_funnel_daily` +
-          `?select=segment_type,segment_key,claimed,reopened,notice_shown,converted&day=eq.${day}`, session),
-        fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/trial_experiment_progress`, session, {
-          method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' },
-        }),
-      ]);
-      fnTrialData = { day, rows, progress: (typeof progress === 'number' ? progress : 0) };
+      const rows = await fnFetchAuthedJson(
+        `${SUPABASE_URL}/rest/v1/trial_experiment_funnel_daily` +
+        `?select=segment_type,segment_key,claimed,reopened,notice_shown,converted&day=eq.${TRIAL_RESULT_DAY}`, session);
+      if (!rows.length) { bodyEl.textContent = `결과 스냅샷(${TRIAL_RESULT_DAY})을 찾지 못했습니다.`; return; }
+      fnTrialData = { day: TRIAL_RESULT_DAY, rows, progress: 300 };
     } catch (e) {
       // 401/403만 인증실패로 처리(400은 미배포·쿼리오류일 수 있어 실제 메시지를 보여줌)
       if ([401, 403].includes(e.status)) {
@@ -653,27 +644,6 @@
     }
 
     fnRenderTrialCharts(bodyEl, fnTrialData);
-  }
-
-  // 수동 스냅샷 갱신 — rpc/refresh_trial_experiment_funnel_now (admin uid 가드 내장, 'ok'|'forbidden' 반환)
-  async function fnRefreshTrialSnapshot(e) {
-    const btn = e.currentTarget;
-    const prev = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '갱신 중…';
-    try {
-      const { data: { session } } = await sbAuth.auth.getSession();
-      if (!session) throw new Error('세션 없음');
-      const out = await fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/refresh_trial_experiment_funnel_now`, session, {
-        method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' },
-      });
-      if (out !== 'ok') throw new Error(String(out));
-      await fnRenderTrialExperiment(document.getElementById('fn-content-body')); // 새 데이터로 카드 재조회·재렌더
-    } catch (err) {
-      alert('갱신 실패: ' + err.message);
-      btn.disabled = false;
-      btn.textContent = prev;
-    }
   }
 
   // 마크업 + 차트 렌더만 — 네트워크 없음. 테마 토글 시 이것만 다시 부름.
@@ -694,19 +664,16 @@
     const FUNNEL_COLORS = [fnCssVar('--funnel-1'), fnCssVar('--funnel-2'), fnCssVar('--funnel-3'), fnCssVar('--funnel-4')];
 
     bodyEl.innerHTML = `
-      <div class="fn-trial-toolbar">
-        <button type="button" class="db-theme-toggle" id="fn-trial-refresh">↻ 스냅샷 갱신</button>
-      </div>
       <div class="fn-trial-grid">
         <div class="fn-trial-panel fn-trial-panel--half">
-          <h3 class="fn-trial-panel-title">실험 진행률</h3>
-          <p class="fn-trial-panel-sub">만료자 수 / ${PROGRESS_GOAL} (정지조건) · 스냅샷 기준일 ${dataObj.day}</p>
+          <h3 class="fn-trial-panel-title">실험 종료</h3>
+          <p class="fn-trial-panel-sub">만료자 ${PROGRESS_GOAL}명 달성 · ${TRIAL_REACHED_AT}</p>
           <div class="fn-trial-progress-row">
             <span class="fn-trial-progress-num">${progress}</span>
             <span class="fn-trial-progress-goal">/ ${PROGRESS_GOAL}</span>
           </div>
           <div class="fn-trial-progress-track"><div class="fn-trial-progress-fill" id="fn-trial-progress-fill" style="width:0%"></div></div>
-          <p class="fn-trial-progress-note">개인별 클레임 +7일 경과 시 만료 카운트 (실시간)</p>
+          <p class="fn-trial-progress-note">결과는 달성 직후 스냅샷(${dataObj.day} 05:10 KST) 고정값입니다. 그 시점 클레임 전원(${overall.claimed.toLocaleString()}명, 체험 중 포함) 기준이며, 알림경유 결제는 0명입니다.</p>
         </div>
 
         <div class="fn-trial-panel fn-trial-panel--half">
@@ -716,8 +683,8 @@
         </div>
 
         <div class="fn-trial-panel">
-          <h3 class="fn-trial-panel-title">코호트별 전환율 비교</h3>
-          <p class="fn-trial-panel-sub">그룹별 전환율(%) = 결제(알림경유) / 클레임</p>
+          <h3 class="fn-trial-panel-title">코호트별 재접속률 · 알림노출률</h3>
+          <p class="fn-trial-panel-sub">그룹별 재접속 / 클레임, 만료알림 노출 / 클레임(%) · 결제는 전 그룹 0명이라 비교에서 제외</p>
           <div class="fn-trial-cohort-grid">
             <div class="fn-trial-cohort-sub">
               <p class="fn-trial-cohort-sub-title">성별</p>
@@ -742,8 +709,6 @@
 
     document.getElementById('fn-trial-progress-fill').style.width =
       Math.min(100, PROGRESS_GOAL > 0 ? progress / PROGRESS_GOAL * 100 : 0) + '%';
-
-    document.getElementById('fn-trial-refresh').addEventListener('click', fnRefreshTrialSnapshot);
 
     // ── 퍼널 SVG: 로그스케일 너비(값 0이어도 안 깨지게 clamp), 라벨 좌측고정 / 막대 우측레인 중앙정렬 ──
     function buildFunnelSVG() {
@@ -782,10 +747,10 @@
     window._fnFunnelResizeHandler = buildFunnelSVG;
     window.addEventListener('resize', window._fnFunnelResizeHandler);
 
-    // ── 코호트 4섹션 (segment_type별 단순 막대, y=전환율%, 툴팁에 결제/클레임 수) ──
+    // ── 코호트 4섹션 (segment_type별 묶음 막대 2개: 재접속률·알림노출률, 툴팁에 인원/클레임) ──
     const MISC = '미상';
     const byType = (t) => rows.filter((r) => r.segment_type === t);
-    const convPct = (r) => (r.claimed > 0 ? +(r.converted / r.claimed * 100).toFixed(1) : 0);
+    const ratePct = (r, key) => (r.claimed > 0 ? +(r[key] / r.claimed * 100).toFixed(1) : 0);
     function sortRows(list, order) {
       if (order) {
         return [...list].sort((a, b) => {
@@ -799,23 +764,31 @@
         return b.claimed - a.claimed;
       });
     }
-    function cohortBarChart(canvasId, list, color) {
+    const COHORT_SERIES = [
+      { key: 'reopened', label: '재접속률', color: FUNNEL_COLORS[1] },
+      { key: 'notice_shown', label: '알림노출률', color: FUNNEL_COLORS[2] },
+    ];
+    function cohortBarChart(canvasId, list) {
       const el = document.getElementById(canvasId);
       if (!el) return;
-      const counts = list.map((r) => r.converted);
       const claims = list.map((r) => r.claimed);
       const ch = new Chart(el, {
         type: 'bar',
         data: {
           labels: list.map((r) => r.segment_key),
-          datasets: [{ data: list.map(convPct), backgroundColor: color, borderRadius: 0, barPercentage: 0.6 }],
+          datasets: COHORT_SERIES.map((s) => ({
+            label: s.label,
+            data: list.map((r) => ratePct(r, s.key)),
+            counts: list.map((r) => r[s.key]),
+            backgroundColor: s.color, borderRadius: 0, barPercentage: 0.8, categoryPercentage: 0.7,
+          })),
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: (ctx) => `${ctx.raw}% (${counts[ctx.dataIndex]}/${claims[ctx.dataIndex]}명)` } },
+            legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, font: { size: 11 } } },
+            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label} ${ctx.raw}% (${ctx.dataset.counts[ctx.dataIndex]}/${claims[ctx.dataIndex]}명)` } },
           },
           scales: {
             x: { grid: { display: false } },
@@ -828,10 +801,10 @@
 
     const AGE_ORDER = ['10대', '20대', '30대', '40대', '50대', '60대', '70대', '80대', '90대', MISC];
     const PEAK_ORDER = ['0회', '1~4회', '5~9회', '10회+'];
-    cohortBarChart('fn-trial-cohort-gender', sortRows(byType('gender')), '#C94B7A');
-    cohortBarChart('fn-trial-cohort-age', sortRows(byType('age'), AGE_ORDER), '#7B52CC');
-    cohortBarChart('fn-trial-cohort-persona', sortRows(byType('persona')), '#4f7cff');
-    cohortBarChart('fn-trial-cohort-peak', sortRows(byType('peak_bucket'), PEAK_ORDER), '#E8C000');
+    cohortBarChart('fn-trial-cohort-gender', sortRows(byType('gender')));
+    cohortBarChart('fn-trial-cohort-age', sortRows(byType('age'), AGE_ORDER));
+    cohortBarChart('fn-trial-cohort-persona', sortRows(byType('persona')));
+    cohortBarChart('fn-trial-cohort-peak', sortRows(byType('peak_bucket'), PEAK_ORDER));
   }
 
   // ── 섹션 정의 — 여기 배열에 항목을 추가/삭제하는 게 곧 "프로젝트 추가/삭제".
