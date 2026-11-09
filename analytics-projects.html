@@ -416,7 +416,12 @@
   fnApplyChartThemeDefaults();
   function CHART_GRID_COLOR_FN() { return fnCssVar('--chart-grid'); }
 
-  // ── 데일리미션 KPI: 오늘=실시간 RPC, 과거=mission_funnel_history 테이블 ──
+  // ── 옛 데일리미션 KPI (종료, 2026-11-09 고정) ──────────────────────
+  //   옛 구조(1.3.5~1.3.x: 관문→세션→오답풀이)는 1.4.0(11/3) 오늘의 미션 개편으로 끝남.
+  //   측정 기간 9/2~11/2 고정. 11/3 이후 행은 분모 DAU(1.3.5+)에 새 구조 유저가 섞여 오염돼 안 읽음.
+  //   KPI 타일 = 기간 합산(분자 합 / 분모 합, 단위 명·일). 실시간 mission_funnel_today() 호출 제거.
+  const MISSION_OLD_FROM = '2026-09-02';
+  const MISSION_OLD_TO = '2026-11-02';
   let fnFunnelChart = null;
   let fnCachedHistory = null; // 테마 토글 시 재조회 없이 차트만 다시 그리는 용도
 
@@ -444,20 +449,16 @@
   async function fnRenderMissionFunnelKPI(bodyEl) {
     bodyEl.innerHTML = `<div class="fn-kpi-hero"><div class="fn-kpi-hero-label">불러오는 중…</div></div>`;
 
-    let live, history;
+    let history;
     const { data: { session } } = await sbAuth.auth.getSession();
     if (!session) { bodyEl.textContent = '로그인이 필요합니다.'; return; }
 
     try {
-      [live, history] = await Promise.all([
-        fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/rpc/mission_funnel_today`, session, {
-          method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' },
-        }).then((rows) => rows[0]),
-        fnFetchAuthedJson(`${SUPABASE_URL}/rest/v1/mission_funnel_history?select=*&order=day.asc`, session),
-      ]);
+      history = await fnFetchAuthedJson(
+        `${SUPABASE_URL}/rest/v1/mission_funnel_history?select=*` +
+        `&day=gte.${MISSION_OLD_FROM}&day=lte.${MISSION_OLD_TO}&order=day.asc`, session);
     } catch (e) {
-      // 관리자 uid가 아니면 mission_funnel_today()가 예외를 던지고(RPC라 400/403대)
-      // mission_funnel_history 조회도 RLS에 막혀 같은 부류의 응답이 옴 — 세션을 끊어야
+      // 관리자 uid가 아니면 mission_funnel_history 조회가 RLS에 막힘 — 세션을 끊어야
       // 다른 계정으로 재시도 가능(dashboard.html과 동일 정책).
       if ([400, 401, 403].includes(e.status)) {
         await sbAuth.auth.signOut();
@@ -468,29 +469,45 @@
       return;
     }
 
+    if (!history.length) { bodyEl.textContent = `${MISSION_OLD_FROM}~${MISSION_OLD_TO} 집계 행이 없습니다.`; return; }
     fnCachedHistory = history;
-    const adPct = fnPct(live.ad_watched, live.ad_eligible);
+    // 기간 합산 — 컬럼이 없는 테이블이면 null(광고 컬럼은 존재 여부를 확인 못 해서 있을 때만 표시)
+    const sumOf = (key) => (key in history[0] ? history.reduce((a, r) => a + (Number(r[key]) || 0), 0) : null);
+    const sum = {
+      dau_135: sumOf('dau_135'), gate_viewed: sumOf('gate_viewed'), gate_start: sumOf('gate_start'),
+      completed: sumOf('completed'), ad_watched: sumOf('ad_watched'), ad_eligible: sumOf('ad_eligible'),
+    };
+    const fmt = (n) => (n == null ? '-' : n.toLocaleString());
     const tiles = [
-      { label: '미션 완료율 (완주/대상유저)', pct: fnPct(live.completed, live.dau_135), num: live.completed, den: live.dau_135 },
-      { label: '관문 노출률 (노출/대상유저)', pct: fnPct(live.gate_viewed, live.dau_135), num: live.gate_viewed, den: live.dau_135 },
-      { label: '관문 통과율 (시작/노출)', pct: fnPct(live.gate_start, live.gate_viewed), num: live.gate_start, den: live.gate_viewed },
-      { label: '세션 완주율 (완주/시작)', pct: fnPct(live.completed, live.gate_start), num: live.completed, den: live.gate_start },
+      { label: '미션 완료율 (완주/대상유저)', pct: fnPct(sum.completed, sum.dau_135), num: sum.completed, den: sum.dau_135 },
+      { label: '관문 노출률 (노출/대상유저)', pct: fnPct(sum.gate_viewed, sum.dau_135), num: sum.gate_viewed, den: sum.dau_135 },
+      { label: '관문 통과율 (시작/노출)', pct: fnPct(sum.gate_start, sum.gate_viewed), num: sum.gate_start, den: sum.gate_viewed },
+      { label: '세션 완주율 (완주/시작)', pct: fnPct(sum.completed, sum.gate_start), num: sum.completed, den: sum.gate_start },
     ];
+    const hasAd = sum.ad_watched != null && sum.ad_eligible != null;
+    const adPct = hasAd ? fnPct(sum.ad_watched, sum.ad_eligible) : null;
+    const periodLabel = `${MISSION_OLD_FROM} ~ ${MISSION_OLD_TO} 합산 · 종료(1.4.0 오늘의 미션으로 개편)`;
 
     bodyEl.innerHTML = `
       <div class="fn-kpi-layout">
         <div class="fn-kpi-left">
           <div class="fn-kpi-hero">
-            <div class="fn-kpi-hero-label">오늘 광고 시청 (2배 보상, clear+review 합산)</div>
-            <div class="fn-kpi-hero-value">${live.ad_watched}<span>건</span></div>
-            <div class="fn-kpi-hero-sub">완주 ${live.ad_eligible}명 중 ${adPct ?? '-'}% 시청 완료 · 실시간</div>
+            ${hasAd ? `
+            <div class="fn-kpi-hero-label">광고 시청 (2배 보상, clear+review 합산)</div>
+            <div class="fn-kpi-hero-value">${fmt(sum.ad_watched)}<span>건</span></div>
+            <div class="fn-kpi-hero-sub">완주 ${fmt(sum.ad_eligible)}건 중 ${adPct ?? '-'}% 시청 완료 · ${periodLabel}</div>
+            ` : `
+            <div class="fn-kpi-hero-label">옛 데일리미션 (관문 → 세션 → 오답풀이)</div>
+            <div class="fn-kpi-hero-value">${fnPct(sum.completed, sum.dau_135) ?? '-'}<span>%</span></div>
+            <div class="fn-kpi-hero-sub">미션 완료율 · ${periodLabel}</div>
+            `}
           </div>
           <div class="fn-kpi-grid">
             ${tiles.map((t) => `
               <div class="fn-kpi-tile">
                 <div class="fn-kpi-tile-label">${t.label}</div>
                 <div class="fn-kpi-tile-value">${t.pct ?? '-'}%</div>
-                <div class="fn-kpi-tile-sub">${t.num} / ${t.den}명</div>
+                <div class="fn-kpi-tile-sub">${fmt(t.num)} / ${fmt(t.den)}명·일</div>
               </div>
             `).join('')}
           </div>
@@ -516,7 +533,7 @@
                 `).join('')}
               </div>
             </div>
-            <p class="fn-chart-note">점선 구간 = 오늘(진행중, 미확정)</p>
+            <p class="fn-chart-note">${MISSION_OLD_FROM} ~ ${MISSION_OLD_TO} 고정 · 이후는 분모 오염으로 제외</p>
           </div>
         </div>
       </div>
@@ -568,7 +585,6 @@
     fnRenderChartLegend();
     const rangeVal = document.getElementById('fn-chart-range').value;
     const rows = fnRowsInRange(rangeVal, allRows);
-    const todayStr = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 캘린더데이
     const checked = Array.from(document.querySelectorAll('#fn-chart-menu input:checked')).map((el) => el.value);
 
     const datasets = checked.map((key) => {
@@ -581,10 +597,6 @@
         tension: 0,
         pointRadius: 0,
         borderWidth: 2,
-        segment: {
-          // 오늘로 이어지는 마지막 구간만 점선 — 미완성 데이터임을 표시
-          borderDash: (ctx) => (rows[ctx.p1DataIndex]?.day === todayStr ? [5, 4] : undefined),
-        },
       };
     });
 
@@ -810,7 +822,7 @@
   // ── 섹션 정의 — 여기 배열에 항목을 추가/삭제하는 게 곧 "프로젝트 추가/삭제".
   // render가 없으면 자리표시 문구만 보여준다(신규 섹션 초안용).
   const FN_SECTIONS = [
-    { id: 'mission-funnel', title: '데일리미션 분석', kpiMode: true, render: fnRenderMissionFunnelKPI },
+    { id: 'mission-funnel', title: '옛 데일리미션 분석 (9/2~11/2 종료)', kpiMode: true, render: fnRenderMissionFunnelKPI },
     { id: 'trial-experiment', title: '7일 체험 만료 후 전환율 실험', kpiMode: true, render: fnRenderTrialExperiment },
   ];
 
