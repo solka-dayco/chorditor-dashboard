@@ -621,6 +621,124 @@
     });
   }
 
+  // ── 오늘의 미션 (1.4+ 새 구조) — 출석 달성률 ───────────────────────
+  //   출석 달성률 = 그날 daily_mission_attended 유저 / 앱 버전 1.4 이상 DAU. 완료 여부만 본다.
+  //   일별 값은 daily_mission_attend_daily 스냅샷(supabase/daily_mission_attend_daily.sql, 크론 매시 5분)에서 읽음.
+  //   11/3은 점진 배포 첫날(1.4 DAU 1명)이라 11/4부터 표시. 오늘 행은 집계 중이라 합계·타일에서 제외하고 차트에만 그린다.
+  const ATTEND_FROM = '2026-11-04';
+  let fnAttendChart = null;
+  let fnAttendRows = null;   // 테마 토글 시 재조회 없이 차트만 다시 그리는 용도
+
+  function fnKstToday() {
+    return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  }
+
+  function fnRenderAttendChart(rows) {
+    if (fnAttendChart) fnAttendChart.destroy();
+    const color = '#4f7cff';
+    fnAttendChart = new Chart(document.getElementById('fn-attend-chart'), {
+      type: 'line',
+      data: {
+        labels: rows.map((r) => r.day),
+        datasets: [{
+          label: '출석 달성률',
+          data: rows.map((r) => fnPct(r.attended, r.dau)),
+          borderColor: color, backgroundColor: color, tension: 0, pointRadius: 3, borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const r = rows[item.dataIndex];
+                return `출석 달성률 ${item.parsed.y == null ? '-' : item.parsed.y.toFixed(1)}% (${r.attended}/${r.dau}명)`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { color: CHART_GRID_COLOR_FN() }, ticks: { maxTicksLimit: 8 } },
+          y: { min: 0, grid: { color: CHART_GRID_COLOR_FN() }, ticks: { callback: (v) => v + '%' } },
+        },
+      },
+    });
+  }
+
+  async function fnRenderAttend(bodyEl) {
+    bodyEl.innerHTML = `<div class="fn-kpi-hero"><div class="fn-kpi-hero-label">불러오는 중…</div></div>`;
+    const { data: { session } } = await sbAuth.auth.getSession();
+    if (!session) { bodyEl.textContent = '로그인이 필요합니다.'; return; }
+
+    let rows;
+    try {
+      rows = await fnFetchAuthedJson(
+        `${SUPABASE_URL}/rest/v1/daily_mission_attend_daily?select=day,dau,attended` +
+        `&day=gte.${ATTEND_FROM}&order=day.asc`, session);
+    } catch (e) {
+      if ([400, 401, 403].includes(e.status)) {
+        await sbAuth.auth.signOut();
+        showGate('이 계정에는 조회 권한이 없습니다.');
+        return;
+      }
+      bodyEl.textContent = '데이터를 불러오지 못했습니다: ' + e.message;
+      return;
+    }
+    if (!rows.length) { bodyEl.textContent = `${ATTEND_FROM} 이후 집계 행이 없습니다. (daily_mission_attend_daily.sql 실행 여부 확인)`; return; }
+    fnAttendRows = rows;
+
+    const today = fnKstToday();
+    const done = rows.filter((r) => r.day < today);   // 오늘(집계 중) 제외
+    const fmt = (n) => (n == null ? '-' : n.toLocaleString());
+    const sumAttended = (arr) => arr.reduce((a, r) => a + (Number(r.attended) || 0), 0);
+    const sumDau = (arr) => arr.reduce((a, r) => a + (Number(r.dau) || 0), 0);
+    const last7 = done.slice(-7);
+    const yesterday = done[done.length - 1];
+    const tiles = [
+      { label: '최근 7일 (출석/DAU)', pct: fnPct(sumAttended(last7), sumDau(last7)), sub: `${fmt(sumAttended(last7))} / ${fmt(sumDau(last7))}명·일` },
+      { label: yesterday ? `${yesterday.day.slice(5)} (가장 최근 완료일)` : '가장 최근 완료일',
+        pct: yesterday ? fnPct(yesterday.attended, yesterday.dau) : null,
+        sub: yesterday ? `${fmt(yesterday.attended)} / ${fmt(yesterday.dau)}명` : '-' },
+      { label: '출석 달성 누적', pct: null, sub: `${fmt(sumAttended(done))}명·일`, raw: fmt(sumAttended(done)) },
+      { label: '1.4+ DAU 누적', pct: null, sub: `${fmt(sumDau(done))}명·일`, raw: fmt(sumDau(done)) },
+    ];
+    const periodLabel = done.length ? `${done[0].day} ~ ${done[done.length - 1].day} 합산 (오늘 제외)` : '완료된 날 없음';
+
+    bodyEl.innerHTML = `
+      <div class="fn-kpi-layout">
+        <div class="fn-kpi-left">
+          <div class="fn-kpi-hero">
+            <div class="fn-kpi-hero-label">출석 달성률 (필수 미션 2개 완료 = 출석 도장)</div>
+            <div class="fn-kpi-hero-value">${fnPct(sumAttended(done), sumDau(done)) ?? '-'}<span>%</span></div>
+            <div class="fn-kpi-hero-sub">앱 버전 1.4 이상 DAU 대비 · ${periodLabel}</div>
+          </div>
+          <div class="fn-kpi-grid">
+            ${tiles.map((t) => `
+              <div class="fn-kpi-tile">
+                <div class="fn-kpi-tile-label">${t.label}</div>
+                <div class="fn-kpi-tile-value">${t.pct != null ? t.pct + '%' : (t.raw ?? '-')}</div>
+                <div class="fn-kpi-tile-sub">${t.sub}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="fn-kpi-right">
+          <div class="fn-chart-wrap">
+            <div class="db-chart-header"><h3 class="db-chart-title">일별 출석 달성률</h3></div>
+            <div class="db-chart-body"><canvas id="fn-attend-chart"></canvas></div>
+            <p class="fn-chart-note">${ATTEND_FROM}부터 표시 · 11/3은 점진 배포 첫날(분모 1명)이라 제외 · 오늘 값은 집계 중(합계·타일에서 제외)</p>
+          </div>
+        </div>
+      </div>
+    `;
+    fnRenderAttendChart(rows);
+  }
+
   // ── 7일 체험 만료 후 전환율 실험 (종료, 2026-11-09 결과 고정) ──────────
   //   문서: docs/trial-experiment-dashboard-plan.md §3(3카드) / §7-3(스냅샷) / §8(모델)
   //   정지조건 300명 달성 = 2026-09-29 07:55 KST(300번째 클레임 9/22 07:55 + 7일).
@@ -822,6 +940,7 @@
   // ── 섹션 정의 — 여기 배열에 항목을 추가/삭제하는 게 곧 "프로젝트 추가/삭제".
   // render가 없으면 자리표시 문구만 보여준다(신규 섹션 초안용).
   const FN_SECTIONS = [
+    { id: 'mission-attend', title: '오늘의 미션 (1.4+) 출석 달성률', kpiMode: true, render: fnRenderAttend },
     { id: 'mission-funnel', title: '옛 데일리미션 분석 (9/2~11/2 종료)', kpiMode: true, render: fnRenderMissionFunnelKPI },
     { id: 'trial-experiment', title: '7일 체험 만료 후 전환율 실험', kpiMode: true, render: fnRenderTrialExperiment },
   ];
@@ -906,6 +1025,10 @@
     fnApplyChartThemeDefaults();
     if (!gateEl.hidden) return; // 로그인 전이면 아직 섹션 없음
     // 재조회 없이 차트만 다시 그림(색만 바뀌는데 매번 Supabase 재요청하면 낭비)
+    if (fnActiveId === 'mission-attend' && fnAttendRows) {
+      fnRenderAttendChart(fnAttendRows);
+      return;
+    }
     if (fnActiveId === 'mission-funnel' && fnCachedHistory) {
       fnRenderFunnelChart(fnCachedHistory);
       return;
